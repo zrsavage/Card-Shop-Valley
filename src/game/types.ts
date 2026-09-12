@@ -6,6 +6,7 @@ export interface Card {
   rarity: Rarity;
   baseValue: number;
   color: number;
+  season: Season;
 }
 
 export interface ShelfSlot {

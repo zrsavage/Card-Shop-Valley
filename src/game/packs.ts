@@ -1,4 +1,4 @@
-import type { Card, Rarity } from './types';
+import type { Card, Rarity, Season } from './types';
 import { generateCard } from './cards';
 
 export interface PackDefinition {
@@ -48,10 +48,10 @@ function pickWeighted(weights: Record<Rarity, number>): Rarity {
   return entries[0][0];
 }
 
-export function openPack(pack: PackDefinition): Card[] {
+export function openPack(pack: PackDefinition, season: Season): Card[] {
   const cards: Card[] = [];
   for (let i = 0; i < pack.cardCount; i++) {
-    cards.push(generateCard(pickWeighted(pack.weights)));
+    cards.push(generateCard(pickWeighted(pack.weights), season));
   }
   return cards;
 }

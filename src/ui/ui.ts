@@ -1,8 +1,12 @@
 import { gameState, bus, DAY_LENGTH_MS, type DaySummary } from '../game/state';
 import { PACKS, openPack, type PackDefinition } from '../game/packs';
-import { RARITY_LABELS } from '../game/cards';
+import { RARITY_LABELS, SEASON_PRICE_MULTIPLIER } from '../game/cards';
 import { NPCS, friendshipTier, FRIENDSHIP_TIER_LABELS } from '../game/npcs';
 import type { Card, ShopUpgrades, TownUpgrades } from '../game/types';
+
+function effectivePackCost(pack: PackDefinition): number {
+  return Math.round(pack.cost * SEASON_PRICE_MULTIPLIER[gameState.season]);
+}
 
 let modalLayer: HTMLDivElement;
 
@@ -11,10 +15,11 @@ function colorToCss(color: number): string {
 }
 
 function cardChipHtml(card: Card, extraHtml = '', small = false): string {
+  const rarityLine = small ? RARITY_LABELS[card.rarity] : `${RARITY_LABELS[card.rarity]} &middot; ${card.season}`;
   return `
     <div class="card-chip rarity-${card.rarity}${small ? ' card-chip-small' : ''}">
       <div class="card-name">${card.name}</div>
-      <div class="card-rarity">${RARITY_LABELS[card.rarity]}</div>
+      <div class="card-rarity">${rarityLine}</div>
       <div class="card-value">${card.baseValue}g</div>
       ${extraHtml}
     </div>
@@ -104,22 +109,27 @@ function shopUpgradesHtml(): string {
 // --- Counter (packs + shop upgrades) ---
 
 function openCounterModal() {
-  const packRows = PACKS.map(
-    (p) => `
+  const multiplier = SEASON_PRICE_MULTIPLIER[gameState.season];
+  const packRows = PACKS.map((p) => {
+    const cost = effectivePackCost(p);
+    return `
       <div class="pack-row">
         <div class="pack-swatch" style="background:${colorToCss(p.color)}"></div>
         <div class="pack-info">
           <div class="pack-name">${p.name}</div>
-          <div class="pack-meta">${p.cardCount} cards</div>
+          <div class="pack-meta">${p.cardCount} cards &middot; ${gameState.season} set</div>
         </div>
-        <button class="btn buy-pack-btn" data-pack="${p.id}" ${gameState.gold < p.cost ? 'disabled' : ''}>${p.cost}g</button>
+        <button class="btn buy-pack-btn" data-pack="${p.id}" ${gameState.gold < cost ? 'disabled' : ''}>${cost}g</button>
       </div>
-    `,
-  ).join('');
+    `;
+  }).join('');
 
   renderModal(`
     <h2>Pack Counter</h2>
-    <p class="modal-sub">Buy a pack of cards to stock your shelves.</p>
+    <p class="modal-sub">
+      Buy a pack of cards to stock your shelves.
+      ${multiplier !== 1 ? `<br><strong>${gameState.season} market:</strong> prices &times;${multiplier}.` : ''}
+    </p>
     <div class="pack-list">${packRows}</div>
     <h2 class="modal-section-title">Shop Upgrades</h2>
     <div class="pack-list">${shopUpgradesHtml()}</div>
@@ -129,8 +139,8 @@ function openCounterModal() {
   modalLayer.querySelectorAll<HTMLButtonElement>('.buy-pack-btn').forEach((btn) => {
     btn.addEventListener('click', () => {
       const pack = PACKS.find((p) => p.id === btn.dataset.pack) as PackDefinition;
-      if (!gameState.spendGold(pack.cost)) return;
-      const cards = openPack(pack);
+      if (!gameState.spendGold(effectivePackCost(pack))) return;
+      const cards = openPack(pack, gameState.season);
       openPackRevealModal(pack, cards);
     });
   });
@@ -357,7 +367,7 @@ export function initUI() {
     document.getElementById('gold-value')!.textContent = String(gold);
     modalLayer.querySelectorAll<HTMLButtonElement>('.buy-pack-btn').forEach((btn) => {
       const pack = PACKS.find((p) => p.id === btn.dataset.pack);
-      if (pack) btn.disabled = gold < pack.cost;
+      if (pack) btn.disabled = gold < effectivePackCost(pack);
     });
     modalLayer.querySelectorAll<HTMLButtonElement>('.buy-upgrade-btn').forEach((btn) => {
       const def =
