@@ -2,6 +2,7 @@ import { gameState, bus, DAY_LENGTH_MS, type DaySummary } from '../game/state';
 import { PACKS, openPack, type PackDefinition } from '../game/packs';
 import { RARITY_LABELS, SEASON_PRICE_MULTIPLIER } from '../game/cards';
 import { NPCS, friendshipTier, FRIENDSHIP_TIER_LABELS } from '../game/npcs';
+import { generateCardArtSvg } from '../game/cardArt';
 import type { Card, ShopUpgrades, TownUpgrades } from '../game/types';
 
 function effectivePackCost(pack: PackDefinition): number {
@@ -16,8 +17,11 @@ function colorToCss(color: number): string {
 
 function cardChipHtml(card: Card, extraHtml = '', small = false): string {
   const rarityLine = small ? RARITY_LABELS[card.rarity] : `${RARITY_LABELS[card.rarity]} &middot; ${card.season}`;
+  const art = generateCardArtSvg(card.speciesId, card.season, card.rarity, card.stage);
+  const stageBadge = card.stageCount > 1 ? `<div class="stage-badge">Stage ${card.stage}/${card.stageCount}</div>` : '';
   return `
     <div class="card-chip rarity-${card.rarity}${small ? ' card-chip-small' : ''}">
+      <div class="card-art">${art}${stageBadge}</div>
       <div class="card-name">${card.name}</div>
       <div class="card-rarity">${rarityLine}</div>
       <div class="card-value">${card.baseValue}g</div>

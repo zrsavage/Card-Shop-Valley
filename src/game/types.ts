@@ -7,6 +7,12 @@ export interface Card {
   baseValue: number;
   color: number;
   season: Season;
+  /** Evolution line this card belongs to — same speciesId across all its stages. */
+  speciesId: string;
+  /** 1-indexed evolution stage (1 = base form). */
+  stage: number;
+  /** Total number of stages in this card's evolution line, for "Stage 2/3" display. */
+  stageCount: number;
 }
 
 export interface ShelfSlot {

@@ -1,4 +1,5 @@
 import type { Card, Rarity, Season } from './types';
+import { SEASON_CARD_POOL, STAGE_VALUE_MULTIPLIER } from './species';
 
 export const RARITIES: Rarity[] = ['common', 'uncommon', 'rare', 'epic', 'legendary'];
 
@@ -35,51 +36,23 @@ export const SEASON_PRICE_MULTIPLIER: Record<Season, number> = {
   Winter: 1.5,
 };
 
-// One themed 20-card set per season (6 common / 5 uncommon / 4 rare / 3 epic / 2 legendary).
-const SEASON_NAME_POOL: Record<Season, Record<Rarity, string[]>> = {
-  Spring: {
-    common: ['Puddle Slime', 'Field Mouse', 'Twiggy Sprout', 'Pebble Golem', 'Dust Bunny', 'Cabbage Cub'],
-    uncommon: ['Ember Fox', 'Thistle Wolf', 'Storm Sparrow', 'Iron Beetle', 'Moss Turtle'],
-    rare: ['Crimson Griffin', 'Void Serpent', 'Blossom Wyrm', 'Solar Panther'],
-    epic: ['Starlight Phoenix', 'Abyssal Kraken', 'Thunder Djinn'],
-    legendary: ['Celestial Dragon King', 'The Eternal Sphinx'],
-  },
-  Summer: {
-    common: ['Sun Skink', 'Sand Crab', 'Tide Minnow', 'Coral Sprite', 'Palm Beetle', 'Driftwood Golem'],
-    uncommon: ['Blaze Salamander', 'Riptide Ray', 'Dune Jackal', 'Sunflare Hawk', 'Reef Serpent'],
-    rare: ['Molten Lionfish', 'Cyclone Roc', 'Amberscale Drake', 'Mirage Sphinx'],
-    epic: ['Solstice Phoenix', 'Reef Leviathan', 'Desert Djinn King'],
-    legendary: ['The Sunfire Empress', 'Kraken of the Deep Tide'],
-  },
-  Fall: {
-    common: ['Acorn Squirrel', 'Pumpkin Sprite', 'Harvest Mouse', 'Rustling Owlet', 'Amber Beetle', 'Scarecrow Wisp'],
-    uncommon: ['Maple Fox', 'Cider Boar', 'Withering Wraith', 'Chestnut Golem', 'Harvest Hawk'],
-    rare: ['Blood Moon Stag', 'Rotwood Treant', 'Amberfall Wyrm', 'Harvestwind Griffin'],
-    epic: ['Autumn Reaper', 'The Withered King', 'Stormcrow Djinn'],
-    legendary: ['The Harvest Moon Dragon', "Old Man Frost's Herald"],
-  },
-  Winter: {
-    common: ['Frost Vole', 'Snow Hare', 'Icicle Sprite', 'Pine Marten', 'Drift Beetle', 'Powder Golem'],
-    uncommon: ['Glacier Fox', 'Blizzard Owl', 'Rime Wolf', 'Frostbite Hawk', 'Icebound Turtle'],
-    rare: ['Glacier Wyrm', 'Permafrost Griffin', 'Auroraback Stag', 'Void-Ice Serpent'],
-    epic: ['Yeti Warlord', 'Frozen Kraken', 'Boreal Djinn'],
-    legendary: ['The Eternal Winter Dragon', 'Aurora Sphinx Queen'],
-  },
-};
-
 let cardCounter = 0;
 
 export function generateCard(rarity: Rarity, season: Season): Card {
-  const names = SEASON_NAME_POOL[season][rarity];
-  const name = names[Math.floor(Math.random() * names.length)];
+  const pool = SEASON_CARD_POOL[season][rarity];
+  const template = pool[Math.floor(Math.random() * pool.length)];
   const valueJitter = 0.85 + Math.random() * 0.3;
+  const stageMultiplier = STAGE_VALUE_MULTIPLIER[template.stage - 1];
   cardCounter += 1;
   return {
     id: `card-${Date.now()}-${cardCounter}`,
-    name,
+    name: template.name,
     rarity,
     season,
-    baseValue: Math.round(RARITY_BASE_VALUE[rarity] * valueJitter * SEASON_PRICE_MULTIPLIER[season]),
+    speciesId: template.speciesId,
+    stage: template.stage,
+    stageCount: template.stageCount,
+    baseValue: Math.round(RARITY_BASE_VALUE[rarity] * valueJitter * SEASON_PRICE_MULTIPLIER[season] * stageMultiplier),
     color: RARITY_COLORS[rarity],
   };
 }
