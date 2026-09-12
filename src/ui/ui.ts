@@ -16,7 +16,10 @@ function colorToCss(color: number): string {
   return `#${color.toString(16).padStart(6, '0')}`;
 }
 
-function cardChipHtml(card: Card, extraHtml = '', small = false): string {
+// The card face itself never shows gold value — real trading cards don't
+// print a price on them. Value is shown separately via cardSlotHtml() below,
+// as a tag alongside the card rather than baked into its frame.
+function cardChipHtml(card: Card, small = false): string {
   const art = generateCardArtSvg(card.speciesId, card.season, card.rarity, card.stage);
   const stageBadge = card.stageCount > 1 ? `<div class="stage-badge">${card.stage}/${card.stageCount}</div>` : '';
   const setLine = small ? '' : `<div class="card-set-name">${SEASON_SET_NAME[card.season]}</div>`;
@@ -27,11 +30,21 @@ function cardChipHtml(card: Card, extraHtml = '', small = false): string {
         <div class="card-art-window">${art}${stageBadge}</div>
         <div class="card-footer">
           <span class="card-rarity-pill rarity-pill-${card.rarity}">${RARITY_LABELS[card.rarity]}</span>
-          <span class="card-value">${card.baseValue}g</span>
         </div>
         ${setLine}
       </div>
-      ${extraHtml}
+    </div>
+  `;
+}
+
+// A card plus its current market value shown as a separate tag underneath —
+// used wherever the player needs the price for a decision (unpacking,
+// shelving, gifting), without the value living on the card itself.
+function cardSlotHtml(card: Card, small = false): string {
+  return `
+    <div class="card-slot">
+      ${cardChipHtml(card, small)}
+      <div class="value-tag">${card.baseValue}g</div>
     </div>
   `;
 }
@@ -165,7 +178,7 @@ function openCounterModal() {
 }
 
 function openPackRevealModal(pack: PackDefinition, cards: Card[]) {
-  const cardsHtml = cards.map((c) => cardChipHtml(c)).join('');
+  const cardsHtml = cards.map((c) => cardSlotHtml(c)).join('');
   const season = cards[0]?.season ?? gameState.season;
   renderModal(`
     <h2>${pack.name} Opened!</h2>
@@ -187,7 +200,7 @@ function openShelfModal(shelfId: string) {
 
   if (shelf.card) {
     bodyHtml = `
-      <div class="reveal-grid">${cardChipHtml(shelf.card)}</div>
+      <div class="reveal-grid">${cardSlotHtml(shelf.card)}</div>
       <label class="field-label">Price
         <input type="number" id="reprice-input" min="1" value="${shelf.price}" />
       </label>
@@ -203,7 +216,7 @@ function openShelfModal(shelfId: string) {
       .map(
         (c, idx) => `
           <div class="inventory-row" data-idx="${idx}">
-            ${cardChipHtml(c)}
+            ${cardSlotHtml(c)}
             <input type="number" class="place-price-input" min="1" value="${c.baseValue}" />
             <button class="btn place-btn" data-idx="${idx}">Place</button>
           </div>
@@ -296,7 +309,7 @@ function openNpcModal(npcId: string) {
           .map(
             (c, idx) => `
               <div class="inventory-row" data-idx="${idx}">
-                ${cardChipHtml(c)}
+                ${cardSlotHtml(c)}
                 <button class="btn gift-btn" data-idx="${idx}">Gift</button>
               </div>
             `,
@@ -342,7 +355,7 @@ function renderInventoryTray() {
   }
   tray.innerHTML = `
     <div class="tray-label">Bag (${gameState.inventory.length})</div>
-    <div class="tray-items">${gameState.inventory.map((c) => cardChipHtml(c, '', true)).join('')}</div>
+    <div class="tray-items">${gameState.inventory.map((c) => cardSlotHtml(c, true)).join('')}</div>
   `;
 }
 

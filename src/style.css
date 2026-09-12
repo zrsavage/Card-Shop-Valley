@@ -282,7 +282,7 @@ html, body {
   padding: 8px;
 }
 
-.inventory-row .card-chip {
+.inventory-row .card-slot {
   flex: 1;
 }
 
@@ -291,6 +291,26 @@ html, body {
   flex-wrap: wrap;
   gap: 10px;
   margin-bottom: 14px;
+}
+
+/* A card paired with a separate value tag underneath — the card face
+   itself never shows gold value, only this adjacent panel does. */
+.card-slot {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.value-tag {
+  font-size: 11px;
+  font-weight: 700;
+  color: #2b1d0e;
+  background: #ffb703;
+  border: 2px solid #2b1d0e;
+  border-radius: 8px;
+  padding: 1px 8px;
+  box-shadow: 0 2px 0 #8a5a00;
 }
 
 /* A trading card: a rarity-colored frame (.card-chip) around a cream
@@ -376,7 +396,7 @@ html, body {
 .card-footer {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: center;
   gap: 4px;
 }
 
@@ -399,12 +419,6 @@ html, body {
 .rarity-pill-rare { background: #cf9a26; }
 .rarity-pill-epic { background: #9c4fd9; }
 .rarity-pill-legendary { background: #d93e3e; }
-
-.card-value {
-  font-size: 12px;
-  font-weight: 700;
-  color: #2b1d0e;
-}
 
 .card-set-name {
   font-size: 9px;
