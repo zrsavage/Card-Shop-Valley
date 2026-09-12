@@ -3,6 +3,7 @@ import { PACKS, openPack, type PackDefinition } from '../game/packs';
 import { RARITY_LABELS, SEASON_PRICE_MULTIPLIER } from '../game/cards';
 import { NPCS, friendshipTier, FRIENDSHIP_TIER_LABELS } from '../game/npcs';
 import { generateCardArtSvg } from '../game/cardArt';
+import { SEASON_SET_NAME } from '../game/species';
 import type { Card, ShopUpgrades, TownUpgrades } from '../game/types';
 
 function effectivePackCost(pack: PackDefinition): number {
@@ -16,15 +17,20 @@ function colorToCss(color: number): string {
 }
 
 function cardChipHtml(card: Card, extraHtml = '', small = false): string {
-  const rarityLine = small ? RARITY_LABELS[card.rarity] : `${RARITY_LABELS[card.rarity]} &middot; ${card.season}`;
   const art = generateCardArtSvg(card.speciesId, card.season, card.rarity, card.stage);
-  const stageBadge = card.stageCount > 1 ? `<div class="stage-badge">Stage ${card.stage}/${card.stageCount}</div>` : '';
+  const stageBadge = card.stageCount > 1 ? `<div class="stage-badge">${card.stage}/${card.stageCount}</div>` : '';
+  const setLine = small ? '' : `<div class="card-set-name">${SEASON_SET_NAME[card.season]}</div>`;
   return `
     <div class="card-chip rarity-${card.rarity}${small ? ' card-chip-small' : ''}">
-      <div class="card-art">${art}${stageBadge}</div>
-      <div class="card-name">${card.name}</div>
-      <div class="card-rarity">${rarityLine}</div>
-      <div class="card-value">${card.baseValue}g</div>
+      <div class="card-inner">
+        <div class="card-name">${card.name}</div>
+        <div class="card-art-window">${art}${stageBadge}</div>
+        <div class="card-footer">
+          <span class="card-rarity-pill rarity-pill-${card.rarity}">${RARITY_LABELS[card.rarity]}</span>
+          <span class="card-value">${card.baseValue}g</span>
+        </div>
+        ${setLine}
+      </div>
       ${extraHtml}
     </div>
   `;
@@ -121,7 +127,7 @@ function openCounterModal() {
         <div class="pack-swatch" style="background:${colorToCss(p.color)}"></div>
         <div class="pack-info">
           <div class="pack-name">${p.name}</div>
-          <div class="pack-meta">${p.cardCount} cards &middot; ${gameState.season} set</div>
+          <div class="pack-meta">${p.cardCount} cards &middot; ${SEASON_SET_NAME[gameState.season]}</div>
         </div>
         <button class="btn buy-pack-btn" data-pack="${p.id}" ${gameState.gold < cost ? 'disabled' : ''}>${cost}g</button>
       </div>
@@ -131,7 +137,7 @@ function openCounterModal() {
   renderModal(`
     <h2>Pack Counter</h2>
     <p class="modal-sub">
-      Buy a pack of cards to stock your shelves.
+      Now stocking <strong>${SEASON_SET_NAME[gameState.season]}</strong> — buy a pack to stock your shelves.
       ${multiplier !== 1 ? `<br><strong>${gameState.season} market:</strong> prices &times;${multiplier}.` : ''}
     </p>
     <div class="pack-list">${packRows}</div>
@@ -160,8 +166,10 @@ function openCounterModal() {
 
 function openPackRevealModal(pack: PackDefinition, cards: Card[]) {
   const cardsHtml = cards.map((c) => cardChipHtml(c)).join('');
+  const season = cards[0]?.season ?? gameState.season;
   renderModal(`
     <h2>${pack.name} Opened!</h2>
+    <p class="modal-sub">${SEASON_SET_NAME[season]}</p>
     <div class="reveal-grid">${cardsHtml}</div>
     <button class="btn collect-btn">Collect Cards</button>
   `);
@@ -241,7 +249,7 @@ function openShelfModal(shelfId: string) {
 function openDaySummaryModal(summary: DaySummary) {
   renderModal(`
     <h2>Day ${summary.day} Complete!</h2>
-    <p class="modal-sub">${summary.season} &middot; Earned <strong>${summary.goldEarned}g</strong> from ${summary.cardsSold} sale${summary.cardsSold === 1 ? '' : 's'}.</p>
+    <p class="modal-sub">${SEASON_SET_NAME[summary.season]} &middot; Earned <strong>${summary.goldEarned}g</strong> from ${summary.cardsSold} sale${summary.cardsSold === 1 ? '' : 's'}.</p>
     <button class="btn start-day-btn">Start Day ${summary.day + 1}</button>
   `);
   modalLayer.querySelector('.start-day-btn')!.addEventListener('click', closeModal);

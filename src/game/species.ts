@@ -26,69 +26,50 @@ export function seededRandom(seed: string): () => number {
   return mulberry32(hashString(seed));
 }
 
-interface SeasonVocab {
-  adjectives: string[];
-  nouns: string[];
-  /** Prefix applied for stage 2, 3, 4 respectively (stage 1 has none, stage 5 uses legendaryEpithet). */
-  stageTitles: [string, string, string];
+// Each season's expansion set has its own name, like a real TCG set.
+export const SEASON_SET_NAME: Record<Season, string> = {
+  Spring: 'Spring Spritz',
+  Summer: 'Summer Shandy',
+  Fall: 'Fall Cider',
+  Winter: 'Winter Toddy',
+};
+
+interface SeasonNameKit {
+  /** First syllable fragment of an invented root name. */
+  rootStart: string[];
+  /** Second syllable fragment of an invented root name. */
+  rootEnd: string[];
+  /**
+   * Suffix appended to the root for stages 1-5 (index 0 = stage 1, always '').
+   * Names get visibly longer/grander each evolution, Digimon-style.
+   */
+  stageSuffix: [string, string, string, string, string];
   legendaryEpithet: string;
 }
 
-const VOCAB: Record<Season, SeasonVocab> = {
+const NAME_KIT: Record<Season, SeasonNameKit> = {
   Spring: {
-    adjectives: [
-      'Dew', 'Moss', 'Bramble', 'Petal', 'Sprout', 'Clover', 'Meadow', 'Blossom', 'Fern', 'Willow',
-      'Thistle', 'Honey', 'Pollen', 'Vernal', 'Budding', 'Verdant', 'Mossy', 'Lush', 'Sunlit', 'Tender',
-      'Dappled', 'Wildflower', 'Sprig', 'Rootling', 'Meadowlark',
-    ],
-    nouns: [
-      'Fox', 'Hare', 'Sparrow', 'Beetle', 'Turtle', 'Fawn', 'Owlet', 'Vole', 'Badger', 'Wren',
-      'Squirrel', 'Toad', 'Hedgehog', 'Finch', 'Newt', 'Moth', 'Rabbit', 'Mole', 'Lamb', 'Kit',
-      'Pixie', 'Sprite', 'Wisp', 'Nymph', 'Dryad', 'Griffin', 'Wyrm', 'Phoenix', 'Sphinx', 'Drake',
-    ],
-    stageTitles: ['Blooming', 'Elder', 'Ancient'],
+    rootStart: ['Ver', 'Flo', 'Pri', 'Spro', 'Blo', 'Fer', 'Lu', 'Vi', 'Pe', 'Ny', 'Zi', 'Ro', 'Wil', 'Ta', 'Ely', 'Bri', 'Sil', 'Cor', 'My', 'Sa'],
+    rootEnd: ['ana', 'ora', 'ella', 'wen', 'lin', 'osa', 'ith', 'ara', 'yn', 'iel', 'ova', 'eth', 'ika', 'una', 'ael', 'iss', 'ent', 'yra', 'avel', 'oshi'],
+    stageSuffix: ['', 'wyn', 'dral', 'thorn', 'essa'],
     legendaryEpithet: 'the Everblooming Sovereign',
   },
   Summer: {
-    adjectives: [
-      'Sun', 'Sand', 'Tide', 'Coral', 'Reef', 'Palm', 'Dune', 'Blaze', 'Ember', 'Molten',
-      'Mirage', 'Cyclone', 'Amber', 'Solstice', 'Scorched', 'Glimmer', 'Rippling', 'Salt', 'Driftwood', 'Radiant',
-      'Torrid', 'Sizzling', 'Wavecrest', 'Sunbaked', 'Heatwave',
-    ],
-    nouns: [
-      'Skink', 'Crab', 'Minnow', 'Sprite', 'Beetle', 'Golem', 'Salamander', 'Ray', 'Jackal', 'Hawk',
-      'Serpent', 'Lionfish', 'Roc', 'Drake', 'Sphinx', 'Turtle', 'Iguana', 'Pelican', 'Scorpion', 'Gull',
-      'Heron', 'Anemone', 'Barracuda', 'Falcon', 'Viper', 'Djinn', 'Phoenix', 'Leviathan', 'Kraken', 'Wyrm',
-    ],
-    stageTitles: ['Blazing', 'Searing', 'Ancient'],
+    rootStart: ['Zar', 'Sol', 'Blaz', 'Pyr', 'Kai', 'Rey', 'Tor', 'Vul', 'Xan', 'Dez', 'Cor', 'Az', 'Emb', 'Ryn', 'Dax', 'Kor', 'Zeph', 'Sur', 'Val', 'Brin'],
+    rootEnd: ['ados', 'ion', 'ax', 'ara', 'oth', 'iel', 'yx', 'ando', 'iro', 'ez', 'oria', 'ash', 'urn', 'ivor', 'aros', 'exis', 'ova', 'ynx', 'adon', 'irae'],
+    stageSuffix: ['', 'lux', 'dune', 'zorn', 'helia'],
     legendaryEpithet: 'the Sunfire Sovereign',
   },
   Fall: {
-    adjectives: [
-      'Acorn', 'Pumpkin', 'Harvest', 'Rustling', 'Amber', 'Maple', 'Cider', 'Withering', 'Chestnut', 'Bloodmoon',
-      'Rotwood', 'Harvestwind', 'Autumn', 'Withered', 'Stormcrow', 'Coppery', 'Bramblewood', 'Gourdling', 'Mistfall', 'Driftleaf',
-      'Hollow', 'Mellow', 'Spiced', 'Russet', 'Fading',
-    ],
-    nouns: [
-      'Squirrel', 'Sprite', 'Mouse', 'Owlet', 'Beetle', 'Wisp', 'Fox', 'Boar', 'Wraith', 'Golem',
-      'Hawk', 'Stag', 'Treant', 'Wyrm', 'Griffin', 'Reaper', 'Crow', 'Raven', 'Spider', 'Serpent',
-      'Moth', 'Bat', 'Toad', 'Newt', 'Weasel', 'Badger', 'Phoenix', 'Djinn', 'Dragon', 'Sphinx',
-    ],
-    stageTitles: ['Withered', 'Elder', 'Ancient'],
+    rootStart: ['Cor', 'Rus', 'Mor', 'Dur', 'Gol', 'Thal', 'Bram', 'Wyr', 'Hol', 'Fen', 'Grov', 'Ked', 'Sor', 'Vosh', 'Quil', 'Bran', 'Drav', 'Nor', 'Cros', 'Hev'],
+    rootEnd: ['wood', 'ath', 'orn', 'ust', 'ard', 'eth', 'ow', 'ic', 'ald', 'ost', 'ven', 'ick', 'oth', 'ind', 'ander', 'ash', 'ett', 'ric', 'ove', 'und'],
+    stageSuffix: ['', 'crow', 'dusk', 'wither', 'reap'],
     legendaryEpithet: 'the Harvestbound Sovereign',
   },
   Winter: {
-    adjectives: [
-      'Frost', 'Snow', 'Icicle', 'Glacier', 'Blizzard', 'Rime', 'Frostbite', 'Permafrost', 'Aurora', 'Powder',
-      'Sleet', 'Hoarfrost', 'Icebound', 'Boreal', 'Frozen', 'Crystalline', 'Pale', 'Drift', 'Glacial', 'Whiteout',
-      'Icefall', 'Windchill', 'Snowbound', 'Numbing', 'Silvered',
-    ],
-    nouns: [
-      'Vole', 'Hare', 'Sprite', 'Marten', 'Beetle', 'Golem', 'Fox', 'Owl', 'Wolf', 'Hawk',
-      'Turtle', 'Wyrm', 'Griffin', 'Stag', 'Serpent', 'Yeti', 'Kraken', 'Djinn', 'Dragon', 'Sphinx',
-      'Weasel', 'Ermine', 'Lynx', 'Ptarmigan', 'Seal', 'Narwhal', 'Raven', 'Bear', 'Elk', 'Wisp',
-    ],
-    stageTitles: ['Rimed', 'Elder', 'Ancient'],
+    rootStart: ['Fro', 'Gla', 'Ry', 'Vry', 'Kry', 'Sko', 'Bly', 'Whi', 'Niv', 'Isk', 'Fri', 'Sno', 'Cael', 'Thren', 'Vel', 'Aur', 'Bor', 'Crys', 'Hail', 'Pale'],
+    rootEnd: ['ost', 'acia', 'ithe', 'orin', 'ara', 'ivy', 'ell', 'ora', 'ist', 'aeth', 'yn', 'osk', 'ende', 'iven', 'ael', 'orra', 'ynx', 'ast', 'eth', 'iel'],
+    stageSuffix: ['', 'rime', 'glace', 'boreth', 'aurora'],
     legendaryEpithet: 'the Frostbound Sovereign',
   },
 };
@@ -110,40 +91,37 @@ export interface SpeciesCard {
   rarity: Rarity;
 }
 
-function buildStageNames(vocab: SeasonVocab, adj: string, noun: string, stageCount: number): string[] {
-  const names: string[] = [`${adj} ${noun}`];
-  for (let stage = 2; stage <= stageCount; stage++) {
-    if (stage === 5) {
-      names.push(`${names[stage - 2]}, ${vocab.legendaryEpithet}`);
-    } else {
-      names.push(`${vocab.stageTitles[stage - 2]} ${adj} ${noun}`);
-    }
+function buildStageNames(kit: SeasonNameKit, root: string, stageCount: number): string[] {
+  const names: string[] = [];
+  for (let stage = 1; stage <= stageCount; stage++) {
+    const base = `${root}${kit.stageSuffix[stage - 1]}`;
+    names.push(stage === 5 ? `${base}, ${kit.legendaryEpithet}` : base);
   }
   return names;
 }
 
 function buildSeasonSpecies(season: Season): SpeciesCard[][] {
-  const vocab = VOCAB[season];
+  const kit = NAME_KIT[season];
   const rand = seededRandom(`species-seed-${season}`);
 
-  const pairs: [string, string][] = [];
-  for (const adj of vocab.adjectives) {
-    for (const noun of vocab.nouns) {
-      pairs.push([adj, noun]);
+  const roots: string[] = [];
+  for (const start of kit.rootStart) {
+    for (const end of kit.rootEnd) {
+      roots.push(`${start}${end}`);
     }
   }
-  // Deterministic Fisher-Yates shuffle, then take the first SPECIES_PER_SEASON pairs.
-  for (let i = pairs.length - 1; i > 0; i--) {
+  // Deterministic Fisher-Yates shuffle, then take the first SPECIES_PER_SEASON roots.
+  for (let i = roots.length - 1; i > 0; i--) {
     const j = Math.floor(rand() * (i + 1));
-    [pairs[i], pairs[j]] = [pairs[j], pairs[i]];
+    [roots[i], roots[j]] = [roots[j], roots[i]];
   }
-  const chosen = pairs.slice(0, SPECIES_PER_SEASON);
+  const chosen = roots.slice(0, SPECIES_PER_SEASON);
 
-  return chosen.map(([adj, noun], idx) => {
+  return chosen.map((root, idx) => {
     const roll = rand();
     const stageCount = roll < 0.1 ? 5 : roll < 0.3 ? 4 : 3;
     const speciesId = `${season}-${idx}`;
-    const names = buildStageNames(vocab, adj, noun, stageCount);
+    const names = buildStageNames(kit, root, stageCount);
     return names.map((name, i) => ({
       speciesId,
       name,

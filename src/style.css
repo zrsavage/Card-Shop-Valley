@@ -293,54 +293,72 @@ html, body {
   margin-bottom: 14px;
 }
 
+/* A trading card: a rarity-colored frame (.card-chip) around a cream
+   inner face (.card-inner) holding a name plate, a bordered art window,
+   and a footer stat bar — instead of a flat box with text under an icon. */
 .card-chip {
   border: 2px solid #2b1d0e;
-  border-radius: 10px;
-  padding: 8px 10px;
-  min-width: 100px;
+  border-radius: 12px;
+  padding: 4px;
+  min-width: 108px;
   font-weight: 500;
   text-align: center;
   box-shadow: 0 3px 6px rgba(43, 29, 14, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.45);
 }
 
 .card-chip-small {
-  min-width: 70px;
-  padding: 5px 7px;
+  min-width: 76px;
+  padding: 3px;
   flex-shrink: 0;
+}
+
+.card-inner {
+  background: #fff8ec;
+  border-radius: 9px;
+  padding: 5px 6px 6px;
+}
+
+.card-chip-small .card-inner {
+  padding: 3px 4px 4px;
 }
 
 .card-name {
   font-weight: 700;
-  font-size: 13px;
+  font-size: 12px;
   color: #2b1d0e;
+  line-height: 1.2;
+  min-height: 2.4em;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .card-chip-small .card-name {
-  font-size: 11px;
+  font-size: 10px;
+  min-height: 1.8em;
 }
 
-.card-art {
+.card-art-window {
   position: relative;
-  width: 64px;
-  height: 64px;
-  margin: 0 auto 4px;
-}
-
-.card-chip-small .card-art {
-  width: 44px;
-  height: 44px;
+  background: linear-gradient(180deg, #f1e4cc, #e0cda0);
+  border: 2px solid #2b1d0e;
+  border-radius: 8px;
+  padding: 5px;
+  margin: 4px 0;
+  box-shadow: inset 0 2px 4px rgba(43, 29, 14, 0.25);
 }
 
 .card-art-svg {
   width: 100%;
-  height: 100%;
+  height: auto;
+  aspect-ratio: 1;
   display: block;
 }
 
 .stage-badge {
   position: absolute;
-  bottom: -2px;
-  right: -6px;
+  bottom: 2px;
+  right: 2px;
   background: #2b1d0e;
   color: #fff8ec;
   font-size: 9px;
@@ -355,16 +373,45 @@ html, body {
   padding: 0 4px;
 }
 
-.card-rarity {
-  font-size: 11px;
-  opacity: 0.75;
-  color: #2b1d0e;
+.card-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
 }
+
+.card-rarity-pill {
+  font-size: 9px;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 6px;
+  color: #fff8ec;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.25);
+}
+
+.card-chip-small .card-rarity-pill {
+  font-size: 8px;
+  padding: 0 4px;
+}
+
+.rarity-pill-common { background: #5aa8d9; }
+.rarity-pill-uncommon { background: #4fb85c; }
+.rarity-pill-rare { background: #cf9a26; }
+.rarity-pill-epic { background: #9c4fd9; }
+.rarity-pill-legendary { background: #d93e3e; }
 
 .card-value {
   font-size: 12px;
-  margin-top: 2px;
+  font-weight: 700;
   color: #2b1d0e;
+}
+
+.card-set-name {
+  font-size: 9px;
+  font-style: italic;
+  opacity: 0.65;
+  color: #2b1d0e;
+  margin-top: 3px;
 }
 
 .rarity-common { background: radial-gradient(circle at 35% 22%, #c5eaff 0%, #8bd3ff 55%, #5aa8d9 100%); }
