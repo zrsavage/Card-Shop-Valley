@@ -1,0 +1,305 @@
+* {
+  box-sizing: border-box;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  background: #1b120a;
+  font-family: 'Comic Sans MS', 'Baloo 2', system-ui, sans-serif;
+  color: #2b1d0e;
+  overflow: hidden;
+}
+
+#app {
+  position: relative;
+  width: 800px;
+  max-width: 100vw;
+  margin: 0 auto;
+}
+
+#game-container {
+  width: 800px;
+  max-width: 100%;
+  line-height: 0;
+}
+
+#game-container canvas {
+  width: 100%;
+  height: auto;
+  display: block;
+  image-rendering: pixelated;
+}
+
+#ui-root {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  font-weight: 700;
+}
+
+#hud {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  right: 10px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  background: #fff8ec;
+  border: 3px solid #2b1d0e;
+  border-radius: 14px;
+  padding: 8px 14px;
+  pointer-events: auto;
+  box-shadow: 0 4px 0 #2b1d0e33;
+}
+
+.hud-stat {
+  font-size: 15px;
+  white-space: nowrap;
+}
+
+.hud-timebar {
+  flex: 1;
+  height: 10px;
+  background: #e0d2b8;
+  border-radius: 6px;
+  overflow: hidden;
+  border: 2px solid #2b1d0e;
+}
+
+.time-fill {
+  height: 100%;
+  width: 100%;
+  background: linear-gradient(90deg, #ffb703, #fb8500);
+  transition: width 0.2s linear;
+}
+
+.btn {
+  font-family: inherit;
+  font-weight: 700;
+  font-size: 14px;
+  border: 3px solid #2b1d0e;
+  border-radius: 10px;
+  background: #ffb703;
+  color: #2b1d0e;
+  padding: 8px 16px;
+  cursor: pointer;
+  box-shadow: 0 3px 0 #2b1d0e;
+  transition: transform 0.05s ease;
+}
+
+.btn:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+
+.btn:active:not(:disabled) {
+  transform: translateY(2px);
+  box-shadow: 0 1px 0 #2b1d0e;
+}
+
+.btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.btn-small {
+  padding: 6px 12px;
+  font-size: 13px;
+}
+
+.btn-secondary {
+  background: #cfd8dc;
+}
+
+#inventory-tray {
+  position: absolute;
+  bottom: 10px;
+  left: 10px;
+  right: 10px;
+  background: #fff8ecdd;
+  border: 3px solid #2b1d0e;
+  border-radius: 14px;
+  padding: 8px 12px;
+  pointer-events: auto;
+  min-height: 40px;
+}
+
+.tray-label {
+  font-size: 12px;
+  margin-bottom: 4px;
+  color: #6d4c41;
+}
+
+.tray-empty {
+  font-size: 13px;
+  color: #a1887f;
+  text-align: center;
+  padding: 6px 0;
+}
+
+.tray-items {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+}
+
+.modal-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(20, 12, 4, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: auto;
+}
+
+.modal {
+  background: #fff8ec;
+  border: 4px solid #2b1d0e;
+  border-radius: 18px;
+  padding: 22px 26px;
+  width: min(90%, 480px);
+  max-height: 85%;
+  overflow-y: auto;
+  box-shadow: 0 8px 0 #2b1d0e33;
+}
+
+.modal h2 {
+  margin: 0 0 6px;
+  font-size: 22px;
+}
+
+.modal-sub {
+  font-size: 13px;
+  color: #6d4c41;
+  font-weight: 500;
+  margin: 0 0 14px;
+}
+
+.modal-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.pack-list, .inventory-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.pack-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: #f1e4cc;
+  border: 2px solid #2b1d0e;
+  border-radius: 12px;
+  padding: 8px 10px;
+}
+
+.pack-swatch {
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  border: 2px solid #2b1d0e;
+  flex-shrink: 0;
+}
+
+.pack-info {
+  flex: 1;
+}
+
+.pack-name {
+  font-size: 15px;
+}
+
+.pack-meta {
+  font-size: 12px;
+  font-weight: 500;
+  color: #6d4c41;
+}
+
+.inventory-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: #f1e4cc;
+  border: 2px solid #2b1d0e;
+  border-radius: 12px;
+  padding: 8px;
+}
+
+.inventory-row .card-chip {
+  flex: 1;
+}
+
+.reveal-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.card-chip {
+  border: 2px solid #2b1d0e;
+  border-radius: 10px;
+  padding: 8px 10px;
+  min-width: 100px;
+  font-weight: 500;
+  text-align: center;
+}
+
+.card-chip-small {
+  min-width: 70px;
+  padding: 5px 7px;
+  flex-shrink: 0;
+}
+
+.card-name {
+  font-weight: 700;
+  font-size: 13px;
+}
+
+.card-chip-small .card-name {
+  font-size: 11px;
+}
+
+.card-rarity {
+  font-size: 11px;
+  opacity: 0.75;
+}
+
+.card-value {
+  font-size: 12px;
+  margin-top: 2px;
+}
+
+.rarity-common { background: #8bd3ff; }
+.rarity-uncommon { background: #7ee787; }
+.rarity-rare { background: #ffd166; }
+.rarity-epic { background: #c77dff; }
+.rarity-legendary { background: #ff6b6b; }
+
+.field-label {
+  display: block;
+  font-size: 13px;
+  margin-bottom: 10px;
+}
+
+.field-label input, .place-price-input {
+  display: block;
+  margin-top: 4px;
+  width: 90px;
+  font-family: inherit;
+  font-weight: 700;
+  padding: 6px 8px;
+  border: 2px solid #2b1d0e;
+  border-radius: 8px;
+}
+
+.place-price-input {
+  margin: 0;
+}
