@@ -1,7 +1,8 @@
 import Phaser from 'phaser';
 import { gameState, bus } from '../game/state';
 import { spawnCustomer } from '../game/Customer';
-import { COUNTER_POS, ENTRANCE_POS, SHELF_POSITIONS } from '../game/layout';
+import { COUNTER_POS, SHOP_ENTRANCE_POS, SHOP_DOOR_TRIGGER, SHOP_SHELF_POSITIONS } from '../game/layout';
+import type { ShelfPosition } from '../game/layout';
 
 const INTERACT_RANGE = 70;
 const PLAYER_SPEED = 190;
@@ -10,14 +11,13 @@ interface ShelfVisual {
   id: string;
   x: number;
   y: number;
-  base: Phaser.GameObjects.Rectangle;
   cardIcon: Phaser.GameObjects.Arc;
   priceTag: Phaser.GameObjects.Text;
   emptyLabel: Phaser.GameObjects.Text;
 }
 
 export default class ShopScene extends Phaser.Scene {
-  private player!: Phaser.GameObjects.Arc;
+  player!: Phaser.GameObjects.Arc;
   private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
   private wasd!: Record<'up' | 'down' | 'left' | 'right', Phaser.Input.Keyboard.Key>;
   private interactKey!: Phaser.Input.Keyboard.Key;
@@ -32,11 +32,18 @@ export default class ShopScene extends Phaser.Scene {
 
   create() {
     this.cameras.main.setBackgroundColor('#3e2723');
+    this.shelfVisuals = [];
+    this.customerSpawnTimer = 0;
+    this.nextSpawnAt = 2000;
 
     // Floor
     this.add.rectangle(400, 300, 760, 560, 0xe8d5b7).setDepth(0);
-    // Door gap
-    this.add.rectangle(ENTRANCE_POS.x, 598, 100, 8, 0x4a3728).setDepth(1);
+    // Door gap (walk down through here to reach the town)
+    this.add.rectangle(SHOP_DOOR_TRIGGER.x, 598, 100, 8, 0x4a3728).setDepth(1);
+    this.add
+      .text(SHOP_DOOR_TRIGGER.x, 575, 'TOWN ▼', { fontSize: '11px', color: '#a1887f' })
+      .setOrigin(0.5)
+      .setDepth(1);
 
     // Counter
     this.add.rectangle(COUNTER_POS.x, COUNTER_POS.y, 180, 60, 0x6f4e37).setDepth(2);
@@ -47,27 +54,16 @@ export default class ShopScene extends Phaser.Scene {
       .setDepth(3);
     const counterBody = this.physics.add.staticBody(COUNTER_POS.x - 90, COUNTER_POS.y - 30, 180, 60);
 
-    // Shelves
+    // Shelves — base six always present; upgrade-unlocked ones appear as they're purchased.
     const shelfBodies: Phaser.Physics.Arcade.StaticBody[] = [];
-    SHELF_POSITIONS.forEach((pos, i) => {
-      const id = `shelf-${i}`;
-      const base = this.add.rectangle(pos.x, pos.y, 90, 70, 0x8d6e63).setDepth(2);
-      base.setStrokeStyle(3, 0x5d4037);
-      const cardIcon = this.add.circle(pos.x, pos.y - 8, 22, 0xffffff, 0).setDepth(3);
-      const priceTag = this.add
-        .text(pos.x, pos.y + 26, '', { fontSize: '13px', color: '#2b1d0e', fontStyle: 'bold' })
-        .setOrigin(0.5)
-        .setDepth(3);
-      const emptyLabel = this.add
-        .text(pos.x, pos.y - 8, 'empty', { fontSize: '12px', color: '#a1887f' })
-        .setOrigin(0.5)
-        .setDepth(3);
-      this.shelfVisuals.push({ id, x: pos.x, y: pos.y, base, cardIcon, priceTag, emptyLabel });
-      shelfBodies.push(this.physics.add.staticBody(pos.x - 45, pos.y - 35, 90, 70));
+    SHOP_SHELF_POSITIONS.forEach((pos, i) => {
+      if (this.isShelfUnlocked(pos)) {
+        shelfBodies.push(this.createShelfVisual(pos, i));
+      }
     });
 
     // Player
-    this.player = this.add.circle(400, 480, 16, 0xffb703).setDepth(5).setStrokeStyle(3, 0x8a5a00);
+    this.player = this.add.circle(SHOP_ENTRANCE_POS.x, SHOP_ENTRANCE_POS.y, 16, 0xffb703).setDepth(5).setStrokeStyle(3, 0x8a5a00);
     this.physics.add.existing(this.player);
     const playerBody = this.player.body as Phaser.Physics.Arcade.Body;
     playerBody.setCircle(16);
@@ -94,16 +90,59 @@ export default class ShopScene extends Phaser.Scene {
 
     this.refreshShelfVisuals();
     bus.on('shelves-changed', this.refreshShelfVisuals, this);
-    bus.on('paused-changed', (paused: boolean) => {
-      if (paused) (this.player.body as Phaser.Physics.Arcade.Body).setVelocity(0, 0);
-    });
+    bus.on('shop-upgrades-changed', this.onUpgradesChanged, this);
+    bus.on('paused-changed', this.onPausedChanged, this);
+    bus.on('day-summary', this.onDaySummary, this);
 
-    bus.on('day-summary', () => {
-      // clear any lingering customers on the floor
-      this.children.list
-        .filter((c) => (c as any).__customer)
-        .forEach((c) => (c as any).destroy?.());
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      bus.off('shelves-changed', this.refreshShelfVisuals, this);
+      bus.off('shop-upgrades-changed', this.onUpgradesChanged, this);
+      bus.off('paused-changed', this.onPausedChanged, this);
+      bus.off('day-summary', this.onDaySummary, this);
     });
+  }
+
+  private isShelfUnlocked(pos: ShelfPosition): boolean {
+    if (pos.requires === null) return true;
+    if (pos.requires === 'tier1') return gameState.shopUpgrades.extraShelvesTier1;
+    return gameState.shopUpgrades.extraShelvesTier2;
+  }
+
+  private createShelfVisual(pos: ShelfPosition, index: number): Phaser.Physics.Arcade.StaticBody {
+    const id = `shelf-${index}`;
+    const base = this.add.rectangle(pos.x, pos.y, 90, 70, 0x8d6e63).setDepth(2);
+    base.setStrokeStyle(3, 0x5d4037);
+    const cardIcon = this.add.circle(pos.x, pos.y - 8, 22, 0xffffff, 0).setDepth(3);
+    const priceTag = this.add
+      .text(pos.x, pos.y + 26, '', { fontSize: '13px', color: '#2b1d0e', fontStyle: 'bold' })
+      .setOrigin(0.5)
+      .setDepth(3);
+    const emptyLabel = this.add
+      .text(pos.x, pos.y - 8, 'empty', { fontSize: '12px', color: '#a1887f' })
+      .setOrigin(0.5)
+      .setDepth(3);
+    this.shelfVisuals.push({ id, x: pos.x, y: pos.y, cardIcon, priceTag, emptyLabel });
+    return this.physics.add.staticBody(pos.x - 45, pos.y - 35, 90, 70);
+  }
+
+  private onUpgradesChanged() {
+    const existingIds = new Set(this.shelfVisuals.map((v) => v.id));
+    SHOP_SHELF_POSITIONS.forEach((pos, i) => {
+      const id = `shelf-${i}`;
+      if (existingIds.has(id)) return;
+      if (!this.isShelfUnlocked(pos)) return;
+      const body = this.createShelfVisual(pos, i);
+      if (this.player) this.physics.add.collider(this.player, body);
+    });
+    this.refreshShelfVisuals();
+  }
+
+  private onPausedChanged(paused: boolean) {
+    if (paused) (this.player.body as Phaser.Physics.Arcade.Body).setVelocity(0, 0);
+  }
+
+  private onDaySummary() {
+    this.children.list.filter((c) => (c as any).__customer).forEach((c) => (c as any).destroy?.());
   }
 
   private refreshShelfVisuals() {
@@ -125,7 +164,8 @@ export default class ShopScene extends Phaser.Scene {
     if (!gameState.paused) {
       this.handleMovement();
       this.handleInteract();
-      this.tickDay(delta);
+      this.handleDoorTrigger();
+      gameState.tickDay(delta);
       this.tickCustomerSpawns(delta);
     } else {
       this.promptText.setVisible(false);
@@ -143,6 +183,13 @@ export default class ShopScene extends Phaser.Scene {
     const vec = new Phaser.Math.Vector2(vx, vy);
     if (vec.length() > 0) vec.normalize();
     body.setVelocity(vec.x * PLAYER_SPEED, vec.y * PLAYER_SPEED);
+  }
+
+  private handleDoorTrigger() {
+    const d = Phaser.Math.Distance.Between(this.player.x, this.player.y, SHOP_DOOR_TRIGGER.x, SHOP_DOOR_TRIGGER.y);
+    if (d < 40) {
+      this.scene.start('Town');
+    }
   }
 
   private nearestInteractable(): { type: 'counter' | 'shelf'; id?: string; x: number; y: number } | null {
@@ -165,7 +212,7 @@ export default class ShopScene extends Phaser.Scene {
   private handleInteract() {
     const target = this.nearestInteractable();
     if (target) {
-      const label = target.type === 'counter' ? 'Press E: Buy Packs' : 'Press E: Manage Shelf';
+      const label = target.type === 'counter' ? 'Press E: Shop Counter' : 'Press E: Manage Shelf';
       this.promptText.setText(label).setPosition(target.x, target.y - 55).setVisible(true);
     } else {
       this.promptText.setVisible(false);
@@ -180,25 +227,19 @@ export default class ShopScene extends Phaser.Scene {
     }
   }
 
-  private tickDay(delta: number) {
-    gameState.dayTimeRemaining -= delta;
-    bus.emit('time-changed', Math.max(0, gameState.dayTimeRemaining));
-    if (gameState.dayTimeRemaining <= 0) {
-      gameState.endDay();
-    }
-  }
-
   private tickCustomerSpawns(delta: number) {
     this.customerSpawnTimer += delta;
     if (this.customerSpawnTimer < this.nextSpawnAt) return;
     this.customerSpawnTimer = 0;
-    this.nextSpawnAt = Phaser.Math.Between(3500, 6500);
 
+    const fast = gameState.shopUpgrades.marketingSign || gameState.isFestivalDay;
+    const [min, max] = fast ? [1800, 3200] : [3500, 6500];
+    this.nextSpawnAt = Phaser.Math.Between(min, max);
+
+    const maxConcurrent = gameState.isFestivalDay ? 5 : 3;
     const activeCustomers = this.children.list.filter((c) => (c as any).__customer).length;
-    const stockedShelves = this.shelfVisuals.filter(
-      (v) => gameState.shelves.find((s) => s.id === v.id)?.card,
-    );
-    if (activeCustomers >= 3 || stockedShelves.length === 0) return;
+    const stockedShelves = this.shelfVisuals.filter((v) => gameState.shelves.find((s) => s.id === v.id)?.card);
+    if (activeCustomers >= maxConcurrent || stockedShelves.length === 0) return;
 
     const target = Phaser.Utils.Array.GetRandom(stockedShelves);
     spawnCustomer(this, target.id, target.x, target.y);

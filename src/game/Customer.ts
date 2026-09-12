@@ -1,6 +1,8 @@
 import Phaser from 'phaser';
 import { gameState } from './state';
-import { ENTRANCE_POS } from './layout';
+import { SHOP_DOOR_TRIGGER } from './layout';
+
+const CUSTOMER_DOOR_POS = { x: SHOP_DOOR_TRIGGER.x, y: 580 };
 
 const CUSTOMER_COLORS = [0x4cc9f0, 0xf72585, 0x90be6d, 0xf9844a, 0x9b5de5, 0x577590];
 const WALK_SPEED = 130; // px/sec
@@ -35,7 +37,7 @@ function tweenTo(scene: Phaser.Scene, target: Phaser.GameObjects.Arc, x: number,
 
 export function spawnCustomer(scene: Phaser.Scene, shelfId: string, shelfX: number, shelfY: number) {
   const color = Phaser.Utils.Array.GetRandom(CUSTOMER_COLORS);
-  const sprite = scene.add.circle(ENTRANCE_POS.x, ENTRANCE_POS.y, 14, color).setDepth(4);
+  const sprite = scene.add.circle(CUSTOMER_DOOR_POS.x, CUSTOMER_DOOR_POS.y, 14, color).setDepth(4);
   (sprite as any).__customer = true;
 
   const approachX = shelfX + Phaser.Math.Between(-20, 20);
@@ -51,7 +53,10 @@ export function spawnCustomer(scene: Phaser.Scene, shelfId: string, shelfX: numb
       const value = shelf.card.baseValue;
       const price = shelf.price;
       const ratio = price / value;
-      const buyChance = Phaser.Math.Clamp(1.3 - ratio * 0.8, 0.05, 0.95);
+      // The Appraiser's Loupe upgrade makes customers more tolerant of markup.
+      const buyChance = gameState.shopUpgrades.appraisersLoupe
+        ? Phaser.Math.Clamp(1.5 - ratio * 0.65, 0.1, 0.97)
+        : Phaser.Math.Clamp(1.3 - ratio * 0.8, 0.05, 0.95);
       const willBuy = Math.random() < buyChance;
 
       if (willBuy) {
@@ -67,6 +72,6 @@ export function spawnCustomer(scene: Phaser.Scene, shelfId: string, shelfX: numb
 
 function leaveShop(scene: Phaser.Scene, sprite: Phaser.GameObjects.Arc) {
   scene.time.delayedCall(300, () => {
-    tweenTo(scene, sprite, ENTRANCE_POS.x, ENTRANCE_POS.y, () => sprite.destroy());
+    tweenTo(scene, sprite, CUSTOMER_DOOR_POS.x, CUSTOMER_DOOR_POS.y, () => sprite.destroy());
   });
 }

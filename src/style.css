@@ -113,6 +113,56 @@ html, body {
   background: #cfd8dc;
 }
 
+.festival-banner {
+  background: #ff6b6b;
+  color: #fff8ec;
+  border: 2px solid #2b1d0e;
+  border-radius: 8px;
+  padding: 4px 10px;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.modal-section-title {
+  font-size: 16px;
+  margin: 18px 0 8px;
+}
+
+.npc-tier {
+  display: inline-block;
+  font-size: 12px;
+  font-weight: 700;
+  background: #f1e4cc;
+  border: 2px solid #2b1d0e;
+  border-radius: 8px;
+  padding: 2px 10px;
+  margin-bottom: 8px;
+}
+
+.friend-bar {
+  height: 12px;
+  background: #e0d2b8;
+  border: 2px solid #2b1d0e;
+  border-radius: 8px;
+  overflow: hidden;
+  margin-bottom: 12px;
+}
+
+.friend-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #ff8fab, #ff6fae);
+}
+
+.npc-line {
+  font-style: italic;
+  font-size: 14px;
+  background: #f1e4cc;
+  border: 2px solid #2b1d0e;
+  border-radius: 10px;
+  padding: 10px 12px;
+  margin: 0 0 4px;
+}
+
 #inventory-tray {
   position: absolute;
   bottom: 10px;
