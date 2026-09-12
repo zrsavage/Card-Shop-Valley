@@ -300,6 +300,7 @@ html, body {
   min-width: 100px;
   font-weight: 500;
   text-align: center;
+  box-shadow: 0 3px 6px rgba(43, 29, 14, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.45);
 }
 
 .card-chip-small {
@@ -311,6 +312,7 @@ html, body {
 .card-name {
   font-weight: 700;
   font-size: 13px;
+  color: #2b1d0e;
 }
 
 .card-chip-small .card-name {
@@ -356,31 +358,33 @@ html, body {
 .card-rarity {
   font-size: 11px;
   opacity: 0.75;
+  color: #2b1d0e;
 }
 
 .card-value {
   font-size: 12px;
   margin-top: 2px;
+  color: #2b1d0e;
 }
 
-.rarity-common { background: #8bd3ff; }
-.rarity-uncommon { background: #7ee787; }
-.rarity-rare { background: #ffd166; }
-.rarity-epic { background: #c77dff; }
-.rarity-legendary { background: #ff6b6b; }
+.rarity-common { background: radial-gradient(circle at 35% 22%, #c5eaff 0%, #8bd3ff 55%, #5aa8d9 100%); }
+.rarity-uncommon { background: radial-gradient(circle at 35% 22%, #b3f0ba 0%, #7ee787 55%, #4fb85c 100%); }
+.rarity-rare { background: radial-gradient(circle at 35% 22%, #ffe6a3 0%, #ffd166 55%, #d9a92e 100%); }
+.rarity-epic { background: radial-gradient(circle at 35% 22%, #e0b3ff 0%, #c77dff 55%, #9c4fd9 100%); }
+.rarity-legendary { background: radial-gradient(circle at 35% 22%, #ffa3a3 0%, #ff6b6b 55%, #d93e3e 100%); }
 
 @keyframes card-glow {
   0%, 100% { box-shadow: 0 0 0 2px #2b1d0e; }
-  50% { box-shadow: 0 0 14px 4px currentColor, 0 0 0 2px #2b1d0e; }
+  50% { box-shadow: 0 0 14px 4px var(--glow-color), 0 0 0 2px #2b1d0e; }
 }
 
 .reveal-grid .rarity-epic {
-  color: #c77dff;
+  --glow-color: #c77dff;
   animation: card-glow 1.6s ease-in-out infinite;
 }
 
 .reveal-grid .rarity-legendary {
-  color: #ff6b6b;
+  --glow-color: #ff6b6b;
   animation: card-glow 1.2s ease-in-out infinite;
 }
 
