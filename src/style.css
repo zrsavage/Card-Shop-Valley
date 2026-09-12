@@ -333,6 +333,21 @@ html, body {
 .rarity-epic { background: #c77dff; }
 .rarity-legendary { background: #ff6b6b; }
 
+@keyframes card-glow {
+  0%, 100% { box-shadow: 0 0 0 2px #2b1d0e; }
+  50% { box-shadow: 0 0 14px 4px currentColor, 0 0 0 2px #2b1d0e; }
+}
+
+.reveal-grid .rarity-epic {
+  color: #c77dff;
+  animation: card-glow 1.6s ease-in-out infinite;
+}
+
+.reveal-grid .rarity-legendary {
+  color: #ff6b6b;
+  animation: card-glow 1.2s ease-in-out infinite;
+}
+
 .field-label {
   display: block;
   font-size: 13px;
