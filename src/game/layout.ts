@@ -37,3 +37,11 @@ export const TOWN_SHOP_DOOR_POS = { x: 400, y: 150 };
 export const TOWN_HALL_POS = { x: 660, y: 200 };
 export const FOUNTAIN_POS = { x: 400, y: 300 };
 export const FOUNTAIN_RADIUS = 42;
+
+// --- Town <-> Wilds path (left edge of town, clear of the NPC spots) ---
+export const TOWN_TO_WILDS_TRIGGER = { x: 36, y: 450 };
+export const TOWN_FROM_WILDS_POS = { x: 110, y: 450 };
+
+// --- The Wilds (combat area) ---
+export const WILDS_FROM_TOWN_POS = { x: 110, y: 300 };
+export const WILDS_TO_TOWN_TRIGGER = { x: 36, y: 300 };

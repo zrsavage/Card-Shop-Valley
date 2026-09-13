@@ -129,6 +129,32 @@ function shopUpgradesHtml(): string {
   }).join('');
 }
 
+// --- Packs earned from combat, free to open ---
+
+function ownedPacksHtml(): string {
+  if (gameState.ownedPacks.length === 0) {
+    return `<p class="modal-sub">No free packs yet — defeat enemies in the Wilds for a chance at one.</p>`;
+  }
+  const counts = new Map<string, number>();
+  for (const id of gameState.ownedPacks) counts.set(id, (counts.get(id) ?? 0) + 1);
+  return [...counts.entries()]
+    .map(([id, count]) => {
+      const pack = PACKS.find((p) => p.id === id);
+      if (!pack) return '';
+      return `
+        <div class="pack-row">
+          <div class="pack-swatch" style="background:${colorToCss(pack.color)}"></div>
+          <div class="pack-info">
+            <div class="pack-name">${pack.name}${count > 1 ? ` &times;${count}` : ''}</div>
+            <div class="pack-meta">${pack.cardCount} cards &middot; ${SEASON_SET_NAME[gameState.season]}</div>
+          </div>
+          <button class="btn open-owned-pack-btn" data-pack="${id}">Open Free</button>
+        </div>
+      `;
+    })
+    .join('');
+}
+
 // --- Counter (packs + shop upgrades) ---
 
 function openCounterModal() {
@@ -154,6 +180,8 @@ function openCounterModal() {
       ${multiplier !== 1 ? `<br><strong>${gameState.season} market:</strong> prices &times;${multiplier}.` : ''}
     </p>
     <div class="pack-list">${packRows}</div>
+    <h2 class="modal-section-title">Your Packs</h2>
+    <div class="pack-list">${ownedPacksHtml()}</div>
     <h2 class="modal-section-title">Shop Upgrades</h2>
     <div class="pack-list">${shopUpgradesHtml()}</div>
     <button class="btn btn-secondary close-btn">Close</button>
@@ -163,6 +191,15 @@ function openCounterModal() {
     btn.addEventListener('click', () => {
       const pack = PACKS.find((p) => p.id === btn.dataset.pack) as PackDefinition;
       if (!gameState.spendGold(effectivePackCost(pack))) return;
+      const cards = openPack(pack, gameState.season);
+      openPackRevealModal(pack, cards);
+    });
+  });
+  modalLayer.querySelectorAll<HTMLButtonElement>('.open-owned-pack-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const packId = btn.dataset.pack!;
+      if (!gameState.consumeOwnedPack(packId)) return;
+      const pack = PACKS.find((p) => p.id === packId) as PackDefinition;
       const cards = openPack(pack, gameState.season);
       openPackRevealModal(pack, cards);
     });
@@ -371,6 +408,7 @@ export function initUI() {
   root.innerHTML = `
     <div id="hud">
       <div class="hud-stat">Gold: <span id="gold-value">${gameState.gold}</span>g</div>
+      <div class="hud-stat">❤ <span id="hp-value">${gameState.hp}</span>/${gameState.maxHp}</div>
       <div class="hud-stat">Day <span id="day-value">${gameState.day}</span> &middot; <span id="season-value">${gameState.season}</span></div>
       <div id="festival-banner" class="festival-banner" ${gameState.isFestivalDay ? '' : 'hidden'}>🎉 Festival</div>
       <div class="hud-timebar"><div id="time-fill" class="time-fill"></div></div>
@@ -410,6 +448,10 @@ export function initUI() {
     if (fill) fill.style.width = `${pct}%`;
   });
   bus.on('inventory-changed', renderInventoryTray);
+  bus.on('hp-changed', (hp: number) => {
+    const el = document.getElementById('hp-value');
+    if (el) el.textContent = String(Math.round(hp));
+  });
   bus.on('open-counter', openCounterModal);
   bus.on('open-shelf', (shelfId: string) => openShelfModal(shelfId));
   bus.on('day-summary', (summary: DaySummary) => openDaySummaryModal(summary));

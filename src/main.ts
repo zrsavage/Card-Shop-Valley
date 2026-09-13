@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import './style.css';
 import ShopScene from './scenes/ShopScene';
 import TownScene from './scenes/TownScene';
+import WildsScene from './scenes/WildsScene';
 import { initUI } from './ui/ui';
 import { loadGame, initAutosave } from './game/save';
 
@@ -18,7 +19,7 @@ const config: Phaser.Types.Core.GameConfig = {
     default: 'arcade',
     arcade: { debug: false },
   },
-  scene: [ShopScene, TownScene],
+  scene: [ShopScene, TownScene, WildsScene],
 };
 
 new Phaser.Game(config);

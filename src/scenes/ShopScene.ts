@@ -188,7 +188,7 @@ export default class ShopScene extends Phaser.Scene {
   private handleDoorTrigger() {
     const d = Phaser.Math.Distance.Between(this.player.x, this.player.y, SHOP_DOOR_TRIGGER.x, SHOP_DOOR_TRIGGER.y);
     if (d < 40) {
-      this.scene.start('Town');
+      this.scene.start('Town', { from: 'shop' });
     }
   }
 

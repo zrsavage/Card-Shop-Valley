@@ -11,6 +11,7 @@ interface SaveData {
   shopUpgrades: ShopUpgrades;
   townUpgrades: TownUpgrades;
   npcs: Record<string, NpcState>;
+  ownedPacks: string[];
 }
 
 export function saveGame() {
@@ -23,6 +24,7 @@ export function saveGame() {
       shopUpgrades: gameState.shopUpgrades,
       townUpgrades: gameState.townUpgrades,
       npcs: gameState.npcs,
+      ownedPacks: gameState.ownedPacks,
     };
     localStorage.setItem(SAVE_KEY, JSON.stringify(data));
   } catch {
@@ -56,6 +58,7 @@ export function loadGame(): boolean {
         if (gameState.npcs[id]) gameState.npcs[id] = npcState;
       }
     }
+    if (Array.isArray(data.ownedPacks)) gameState.ownedPacks = data.ownedPacks;
     return true;
   } catch {
     return false;
@@ -87,4 +90,5 @@ export function initAutosave() {
   bus.on('npc-changed', queueSave);
   bus.on('shelves-changed', queueSave);
   bus.on('inventory-changed', queueSave);
+  bus.on('packs-changed', queueSave);
 }

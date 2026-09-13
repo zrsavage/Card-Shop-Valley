@@ -1,0 +1,277 @@
+import Phaser from 'phaser';
+import { gameState, bus } from '../game/state';
+import { showFloatingText } from '../game/fx';
+import { ENEMY_DEFS, rollPackDrop, type EnemyDef } from '../game/combat';
+import { PACKS } from '../game/packs';
+import { WILDS_FROM_TOWN_POS, WILDS_TO_TOWN_TRIGGER } from '../game/layout';
+
+const PLAYER_SPEED = 190;
+const MELEE_RANGE = 55;
+const PLAYER_ATTACK_DAMAGE = 14;
+const ATTACK_COOLDOWN_MS = 400;
+const MAX_ENEMIES = 6;
+const CONTACT_DAMAGE_COOLDOWN_MS = 900;
+const HP_REGEN_DELAY_MS = 3000;
+const HP_REGEN_PER_SEC = 6;
+
+interface EnemyInstance {
+  def: EnemyDef;
+  sprite: Phaser.GameObjects.Arc;
+  hpBarBg: Phaser.GameObjects.Rectangle;
+  hpBarFill: Phaser.GameObjects.Rectangle;
+  hp: number;
+  lastContactTime: number;
+  wanderTarget: { x: number; y: number };
+}
+
+export default class WildsScene extends Phaser.Scene {
+  player!: Phaser.GameObjects.Arc;
+  private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
+  private wasd!: Record<'up' | 'down' | 'left' | 'right', Phaser.Input.Keyboard.Key>;
+  private attackKey!: Phaser.Input.Keyboard.Key;
+  private promptText!: Phaser.GameObjects.Text;
+  private enemies: EnemyInstance[] = [];
+  private attackCooldownRemaining = 0;
+  private spawnTimer = 0;
+  private nextSpawnAt = 1500;
+  private lastDamageTime = 0;
+
+  constructor() {
+    super('Wilds');
+  }
+
+  create() {
+    this.cameras.main.setBackgroundColor('#243318');
+    this.enemies = [];
+    this.attackCooldownRemaining = 0;
+    this.spawnTimer = 0;
+    this.nextSpawnAt = 1500;
+    this.lastDamageTime = 0;
+
+    // Wild terrain — a darker, mossier ground than the town square.
+    this.add.rectangle(400, 300, 760, 560, 0x3a5230).setDepth(0);
+    for (let i = 0; i < 14; i++) {
+      const x = Phaser.Math.Between(50, 750);
+      const y = Phaser.Math.Between(50, 550);
+      this.add.circle(x, y, Phaser.Math.Between(10, 22), 0x2f4526, 0.6).setDepth(0);
+    }
+
+    // Path back to town (left wall)
+    this.add.rectangle(28, WILDS_TO_TOWN_TRIGGER.y, 10, 110, 0x4a3728).setDepth(1);
+    this.add
+      .text(52, WILDS_TO_TOWN_TRIGGER.y, 'TOWN\n◄', { fontSize: '11px', color: '#fff8ec', align: 'center' })
+      .setOrigin(0.5)
+      .setDepth(1);
+
+    gameState.healFully();
+
+    this.player = this.add
+      .circle(WILDS_FROM_TOWN_POS.x, WILDS_FROM_TOWN_POS.y, 16, 0xffb703)
+      .setDepth(5)
+      .setStrokeStyle(3, 0x8a5a00);
+    this.physics.add.existing(this.player);
+    const playerBody = this.player.body as Phaser.Physics.Arcade.Body;
+    playerBody.setCircle(16);
+    playerBody.setCollideWorldBounds(true);
+    this.physics.world.setBounds(30, 30, 740, 540);
+
+    this.promptText = this.add
+      .text(0, 0, '', { fontSize: '13px', color: '#ffffff', backgroundColor: '#000000aa', padding: { x: 6, y: 3 } })
+      .setOrigin(0.5)
+      .setDepth(10)
+      .setVisible(false);
+
+    this.cursors = this.input.keyboard!.createCursorKeys();
+    this.wasd = {
+      up: this.input.keyboard!.addKey('W'),
+      down: this.input.keyboard!.addKey('S'),
+      left: this.input.keyboard!.addKey('A'),
+      right: this.input.keyboard!.addKey('D'),
+    };
+    this.attackKey = this.input.keyboard!.addKey('SPACE');
+
+    for (let i = 0; i < 3; i++) this.spawnEnemy();
+
+    bus.on('paused-changed', this.onPausedChanged, this);
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      bus.off('paused-changed', this.onPausedChanged, this);
+    });
+  }
+
+  private onPausedChanged(paused: boolean) {
+    if (paused) (this.player.body as Phaser.Physics.Arcade.Body).setVelocity(0, 0);
+  }
+
+  update(time: number, delta: number) {
+    if (gameState.paused) {
+      this.promptText.setVisible(false);
+      return;
+    }
+    if (this.attackCooldownRemaining > 0) this.attackCooldownRemaining -= delta;
+
+    this.handleMovement();
+    this.handleAttack();
+    this.handleReturnTrigger();
+    this.updateEnemies(time, delta);
+    this.tickSpawns(delta);
+    this.tickRegen(time, delta);
+    gameState.tickDay(delta);
+
+    const nearReturn = Phaser.Math.Distance.Between(this.player.x, this.player.y, WILDS_TO_TOWN_TRIGGER.x, WILDS_TO_TOWN_TRIGGER.y) < 70;
+    this.promptText.setVisible(nearReturn);
+    if (nearReturn) {
+      this.promptText.setText('Walk left to return to town').setPosition(this.player.x, this.player.y - 35);
+    }
+  }
+
+  private handleMovement() {
+    const body = this.player.body as Phaser.Physics.Arcade.Body;
+    let vx = 0;
+    let vy = 0;
+    if (this.cursors.left?.isDown || this.wasd.left.isDown) vx -= 1;
+    if (this.cursors.right?.isDown || this.wasd.right.isDown) vx += 1;
+    if (this.cursors.up?.isDown || this.wasd.up.isDown) vy -= 1;
+    if (this.cursors.down?.isDown || this.wasd.down.isDown) vy += 1;
+    const vec = new Phaser.Math.Vector2(vx, vy);
+    if (vec.length() > 0) vec.normalize();
+    body.setVelocity(vec.x * PLAYER_SPEED, vec.y * PLAYER_SPEED);
+  }
+
+  private handleReturnTrigger() {
+    const d = Phaser.Math.Distance.Between(this.player.x, this.player.y, WILDS_TO_TOWN_TRIGGER.x, WILDS_TO_TOWN_TRIGGER.y);
+    if (d < 40) {
+      this.scene.start('Town', { from: 'wilds' });
+    }
+  }
+
+  private handleAttack() {
+    if (this.attackCooldownRemaining > 0) return;
+    if (!Phaser.Input.Keyboard.JustDown(this.attackKey)) return;
+    this.attackCooldownRemaining = ATTACK_COOLDOWN_MS;
+
+    const ring = this.add.circle(this.player.x, this.player.y, 8, 0xfff3d6, 0.5).setDepth(6);
+    this.tweens.add({
+      targets: ring,
+      radius: MELEE_RANGE,
+      alpha: 0,
+      duration: 200,
+      onComplete: () => ring.destroy(),
+    });
+
+    for (const enemy of [...this.enemies]) {
+      const d = Phaser.Math.Distance.Between(enemy.sprite.x, enemy.sprite.y, this.player.x, this.player.y);
+      if (d < MELEE_RANGE) {
+        this.damageEnemy(enemy, PLAYER_ATTACK_DAMAGE);
+      }
+    }
+  }
+
+  private damageEnemy(enemy: EnemyInstance, amount: number) {
+    enemy.hp -= amount;
+    showFloatingText(this, enemy.sprite.x, enemy.sprite.y - enemy.def.radius - 6, `-${amount}`, '#fff3d6');
+    if (enemy.hp <= 0) {
+      this.killEnemy(enemy);
+      return;
+    }
+    const frac = Math.max(0, enemy.hp / enemy.def.maxHp);
+    enemy.hpBarFill.setSize(30 * frac, 5);
+  }
+
+  private killEnemy(enemy: EnemyInstance) {
+    const packId = rollPackDrop(enemy.def);
+    if (packId) {
+      gameState.awardPack(packId);
+      const pack = PACKS.find((p) => p.id === packId);
+      showFloatingText(this, enemy.sprite.x, enemy.sprite.y - 24, `+1 ${pack?.name ?? 'Pack'}!`, '#ffd166');
+    }
+    enemy.sprite.destroy();
+    enemy.hpBarBg.destroy();
+    enemy.hpBarFill.destroy();
+    this.enemies = this.enemies.filter((e) => e !== enemy);
+  }
+
+  private updateEnemies(time: number, delta: number) {
+    const dt = delta / 1000;
+    for (const enemy of this.enemies) {
+      const distToPlayer = Phaser.Math.Distance.Between(enemy.sprite.x, enemy.sprite.y, this.player.x, this.player.y);
+
+      if (distToPlayer < enemy.def.aggroRange) {
+        const angle = Phaser.Math.Angle.Between(enemy.sprite.x, enemy.sprite.y, this.player.x, this.player.y);
+        enemy.sprite.x += Math.cos(angle) * enemy.def.speed * dt;
+        enemy.sprite.y += Math.sin(angle) * enemy.def.speed * dt;
+      } else {
+        const wanderDist = Phaser.Math.Distance.Between(enemy.sprite.x, enemy.sprite.y, enemy.wanderTarget.x, enemy.wanderTarget.y);
+        if (wanderDist < 10) {
+          enemy.wanderTarget = {
+            x: Phaser.Math.Clamp(enemy.sprite.x + Phaser.Math.Between(-80, 80), 50, 750),
+            y: Phaser.Math.Clamp(enemy.sprite.y + Phaser.Math.Between(-80, 80), 50, 550),
+          };
+        }
+        const angle = Phaser.Math.Angle.Between(enemy.sprite.x, enemy.sprite.y, enemy.wanderTarget.x, enemy.wanderTarget.y);
+        enemy.sprite.x += Math.cos(angle) * (enemy.def.speed * 0.4) * dt;
+        enemy.sprite.y += Math.sin(angle) * (enemy.def.speed * 0.4) * dt;
+      }
+
+      enemy.hpBarBg.setPosition(enemy.sprite.x, enemy.sprite.y - enemy.def.radius - 10);
+      enemy.hpBarFill.setPosition(enemy.sprite.x - 15, enemy.sprite.y - enemy.def.radius - 10);
+
+      const contactDist = enemy.def.radius + 16 + 2;
+      if (distToPlayer < contactDist && time - enemy.lastContactTime > CONTACT_DAMAGE_COOLDOWN_MS) {
+        enemy.lastContactTime = time;
+        this.lastDamageTime = time;
+        const dead = gameState.takeDamage(enemy.def.damage);
+        showFloatingText(this, this.player.x, this.player.y - 24, `-${enemy.def.damage}`, '#ff6b6b');
+        if (dead) {
+          this.handlePlayerDown();
+          return;
+        }
+      }
+    }
+  }
+
+  private handlePlayerDown() {
+    gameState.healFully();
+    showFloatingText(this, this.player.x, this.player.y - 24, `Knocked out!`, '#ff6b6b');
+    this.scene.start('Town', { from: 'wilds' });
+  }
+
+  private tickRegen(time: number, delta: number) {
+    if (time - this.lastDamageTime < HP_REGEN_DELAY_MS) return;
+    gameState.regenHp((HP_REGEN_PER_SEC * delta) / 1000);
+  }
+
+  private tickSpawns(delta: number) {
+    this.spawnTimer += delta;
+    if (this.spawnTimer < this.nextSpawnAt) return;
+    this.spawnTimer = 0;
+    this.nextSpawnAt = Phaser.Math.Between(2500, 5000);
+    if (this.enemies.length >= MAX_ENEMIES) return;
+    this.spawnEnemy();
+  }
+
+  private spawnEnemy() {
+    const def = Phaser.Utils.Array.GetRandom(ENEMY_DEFS);
+    let x = 400;
+    let y = 300;
+    for (let attempt = 0; attempt < 10; attempt++) {
+      x = Phaser.Math.Between(70, 730);
+      y = Phaser.Math.Between(70, 530);
+      if (Phaser.Math.Distance.Between(x, y, this.player.x, this.player.y) > 160) break;
+    }
+
+    const sprite = this.add.circle(x, y, def.radius, def.color).setDepth(4).setStrokeStyle(2, 0x2b1d0e);
+    const hpBarBg = this.add.rectangle(x, y - def.radius - 10, 30, 5, 0x2b1d0e).setDepth(6);
+    const hpBarFill = this.add.rectangle(x - 15, y - def.radius - 10, 30, 5, 0xff6b6b).setOrigin(0, 0.5).setDepth(7);
+    hpBarBg.setOrigin(0.5, 0.5);
+
+    this.enemies.push({
+      def,
+      sprite,
+      hpBarBg,
+      hpBarFill,
+      hp: def.maxHp,
+      lastContactTime: 0,
+      wanderTarget: { x, y },
+    });
+  }
+}

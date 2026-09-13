@@ -1,26 +1,12 @@
 import Phaser from 'phaser';
 import { gameState } from './state';
 import { SHOP_DOOR_TRIGGER } from './layout';
+import { showFloatingText } from './fx';
 
 const CUSTOMER_DOOR_POS = { x: SHOP_DOOR_TRIGGER.x, y: 580 };
 
 const CUSTOMER_COLORS = [0x4cc9f0, 0xf72585, 0x90be6d, 0xf9844a, 0x9b5de5, 0x577590];
 const WALK_SPEED = 130; // px/sec
-
-function showFloatingText(scene: Phaser.Scene, x: number, y: number, text: string, color: string) {
-  const t = scene.add
-    .text(x, y, text, { fontSize: '14px', color, fontStyle: 'bold' })
-    .setOrigin(0.5)
-    .setDepth(20);
-  scene.tweens.add({
-    targets: t,
-    y: y - 40,
-    alpha: 0,
-    duration: 1100,
-    ease: 'Cubic.Out',
-    onComplete: () => t.destroy(),
-  });
-}
 
 function tweenTo(scene: Phaser.Scene, target: Phaser.GameObjects.Arc, x: number, y: number, onDone: () => void) {
   const dist = Phaser.Math.Distance.Between(target.x, target.y, x, y);

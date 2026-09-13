@@ -60,6 +60,11 @@ class GameState {
   goldEarnedToday = 0;
   cardsSoldToday = 0;
 
+  maxHp = 100;
+  hp = 100;
+  /** Pack ids earned from combat, awaiting a free open at the counter. */
+  ownedPacks: string[] = [];
+
   get season(): Season {
     return SEASONS[Math.floor((this.day - 1) / DAYS_PER_SEASON) % SEASONS.length];
   }
@@ -167,6 +172,37 @@ class GameState {
     npc.friendship = Math.min(100, npc.friendship + gain);
     bus.emit('npc-changed', npcId);
     return gain;
+  }
+
+  /** Returns true if this brought the player to 0 HP. */
+  takeDamage(amount: number): boolean {
+    this.hp = Math.max(0, this.hp - amount);
+    bus.emit('hp-changed', this.hp);
+    return this.hp <= 0;
+  }
+
+  healFully() {
+    this.hp = this.maxHp;
+    bus.emit('hp-changed', this.hp);
+  }
+
+  regenHp(amount: number) {
+    if (this.hp >= this.maxHp) return;
+    this.hp = Math.min(this.maxHp, this.hp + amount);
+    bus.emit('hp-changed', this.hp);
+  }
+
+  awardPack(packId: string) {
+    this.ownedPacks.push(packId);
+    bus.emit('packs-changed', this.ownedPacks);
+  }
+
+  consumeOwnedPack(packId: string): boolean {
+    const idx = this.ownedPacks.indexOf(packId);
+    if (idx < 0) return false;
+    this.ownedPacks.splice(idx, 1);
+    bus.emit('packs-changed', this.ownedPacks);
+    return true;
   }
 
   setPaused(paused: boolean) {

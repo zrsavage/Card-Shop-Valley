@@ -7,6 +7,8 @@ import {
   TOWN_HALL_POS,
   FOUNTAIN_POS,
   FOUNTAIN_RADIUS,
+  TOWN_TO_WILDS_TRIGGER,
+  TOWN_FROM_WILDS_POS,
 } from '../game/layout';
 import type { Season } from '../game/types';
 
@@ -40,7 +42,7 @@ export default class TownScene extends Phaser.Scene {
     super('Town');
   }
 
-  create() {
+  create(data?: { from?: 'shop' | 'wilds' }) {
     this.cameras.main.setBackgroundColor('#2b2118');
     this.npcVisuals = [];
 
@@ -50,6 +52,13 @@ export default class TownScene extends Phaser.Scene {
     this.add.rectangle(TOWN_SHOP_DOOR_TRIGGER.x, 32, 110, 10, 0x4a3728).setDepth(1);
     this.add
       .text(TOWN_SHOP_DOOR_TRIGGER.x, 48, 'SHOP ▲', { fontSize: '11px', color: '#fff8ec' })
+      .setOrigin(0.5)
+      .setDepth(1);
+
+    // Wilds path (left wall)
+    this.add.rectangle(28, TOWN_TO_WILDS_TRIGGER.y, 10, 110, 0x4a3728).setDepth(1);
+    this.add
+      .text(52, TOWN_TO_WILDS_TRIGGER.y, 'WILDS\n◄', { fontSize: '11px', color: '#fff8ec', align: 'center' })
       .setOrigin(0.5)
       .setDepth(1);
 
@@ -78,8 +87,9 @@ export default class TownScene extends Phaser.Scene {
       this.npcVisuals.push({ id: npc.id, sprite, label });
     }
 
-    // Player
-    this.player = this.add.circle(TOWN_SHOP_DOOR_POS.x, TOWN_SHOP_DOOR_POS.y, 16, 0xffb703).setDepth(5).setStrokeStyle(3, 0x8a5a00);
+    // Player — arrives at the door leading back from wherever they came from.
+    const spawnPos = data?.from === 'wilds' ? TOWN_FROM_WILDS_POS : TOWN_SHOP_DOOR_POS;
+    this.player = this.add.circle(spawnPos.x, spawnPos.y, 16, 0xffb703).setDepth(5).setStrokeStyle(3, 0x8a5a00);
     this.physics.add.existing(this.player);
     const playerBody = this.player.body as Phaser.Physics.Arcade.Body;
     playerBody.setCircle(16);
@@ -142,6 +152,7 @@ export default class TownScene extends Phaser.Scene {
       this.handleMovement();
       this.handleInteract();
       this.handleDoorTrigger();
+      this.handleWildsTrigger();
       gameState.tickDay(delta);
       this.updateNpcPositions();
     } else {
@@ -166,6 +177,13 @@ export default class TownScene extends Phaser.Scene {
     const d = Phaser.Math.Distance.Between(this.player.x, this.player.y, TOWN_SHOP_DOOR_TRIGGER.x, TOWN_SHOP_DOOR_TRIGGER.y);
     if (d < 40) {
       this.scene.start('Shop');
+    }
+  }
+
+  private handleWildsTrigger() {
+    const d = Phaser.Math.Distance.Between(this.player.x, this.player.y, TOWN_TO_WILDS_TRIGGER.x, TOWN_TO_WILDS_TRIGGER.y);
+    if (d < 40) {
+      this.scene.start('Wilds');
     }
   }
 
