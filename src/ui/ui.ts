@@ -2,7 +2,7 @@ import { gameState, bus, DAY_LENGTH_MS, type DaySummary } from '../game/state';
 import { PACKS, openPack, type PackDefinition } from '../game/packs';
 import { RARITY_LABELS, SEASON_PRICE_MULTIPLIER } from '../game/cards';
 import { NPCS, friendshipTier, FRIENDSHIP_TIER_LABELS } from '../game/npcs';
-import { generateCardArtSvg } from '../game/cardArt';
+import { generateCardArtSvg, cardArtImagePath } from '../game/cardArt';
 import { SEASON_SET_NAME } from '../game/species';
 import type { Card, ShopUpgrades, TownUpgrades } from '../game/types';
 
@@ -20,7 +20,14 @@ function colorToCss(color: number): string {
 // print a price on them. Value is shown separately via cardSlotHtml() below,
 // as a tag alongside the card rather than baked into its frame.
 function cardChipHtml(card: Card, small = false): string {
-  const art = generateCardArtSvg(card.speciesId, card.season, card.rarity, card.stage);
+  const fallbackArt = generateCardArtSvg(card.speciesId, card.season, card.rarity, card.stage);
+  // The illustrated image may not exist yet (art is rolled out species by
+  // species) — if it 404s, swap back to the procedural art beside it.
+  const art = `
+    <img class="card-art-img" src="${cardArtImagePath(card.speciesId)}" alt=""
+      onerror="this.style.display='none'; this.nextElementSibling.style.display='block';" />
+    <div class="card-art-fallback" style="display:none">${fallbackArt}</div>
+  `;
   const stageBadge = card.stageCount > 1 ? `<div class="stage-badge">${card.stage}/${card.stageCount}</div>` : '';
   const setLine = small ? '' : `<div class="card-set-name">${SEASON_SET_NAME[card.season]}</div>`;
   return `

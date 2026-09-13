@@ -232,6 +232,14 @@ function buildGolem(rand: () => number, body: string, accent: string, stage: num
   `;
 }
 
+// Path to a hand-painted illustration for this species, if one has been
+// generated (see /public/card-art). One image is shared across all of a
+// species' evolution stages; the UI falls back to the procedural SVG below
+// when the file doesn't exist yet, so art can be rolled out incrementally.
+export function cardArtImagePath(speciesId: string): string {
+  return `/card-art/${speciesId}.webp`;
+}
+
 export function generateCardArtSvg(speciesId: string, season: Season, rarity: Rarity, stage: number): string {
   const rand = seededRandom(speciesId);
   const palette = SEASON_PALETTES[season];

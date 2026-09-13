@@ -368,11 +368,14 @@ html, body {
   box-shadow: inset 0 2px 4px rgba(43, 29, 14, 0.25);
 }
 
-.card-art-svg {
+.card-art-svg,
+.card-art-img {
   width: 100%;
   height: auto;
   aspect-ratio: 1;
   display: block;
+  object-fit: cover;
+  border-radius: 4px;
 }
 
 .stage-badge {
