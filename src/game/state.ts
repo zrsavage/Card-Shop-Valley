@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import type { Card, ShelfSlot, Season, ShopUpgrades, TownUpgrades, NpcState } from './types';
+import type { Card, ShelfSlot, Season, ShopUpgrades, TownUpgrades, CombatUpgrades, NpcState } from './types';
 import { SHOP_SHELF_POSITIONS } from './layout';
 import { NPCS } from './npcs';
 
@@ -9,6 +9,11 @@ export const SHELF_COUNT = SHOP_SHELF_POSITIONS.length;
 export const DAY_LENGTH_MS = 90_000;
 export const DAYS_PER_SEASON = 7;
 export const SEASONS: Season[] = ['Spring', 'Summer', 'Fall', 'Winter'];
+
+export const PLAYER_BASE_ATTACK_DAMAGE = 14;
+export const WEAPON_TIER_DAMAGE_BONUS = 6;
+export const PLAYER_BASE_MAX_HP = 100;
+export const VITALITY_TIER_HP_BONUS = 40;
 
 export interface DaySummary {
   day: number;
@@ -33,6 +38,17 @@ function defaultTownUpgrades(): TownUpgrades {
   };
 }
 
+function defaultCombatUpgrades(): CombatUpgrades {
+  return {
+    weaponTier1: false,
+    weaponTier2: false,
+    weaponTier3: false,
+    vitalityTier1: false,
+    vitalityTier2: false,
+    vitalityTier3: false,
+  };
+}
+
 function defaultNpcStates(): Record<string, NpcState> {
   const record: Record<string, NpcState> = {};
   for (const npc of NPCS) {
@@ -53,6 +69,7 @@ class GameState {
 
   shopUpgrades: ShopUpgrades = defaultShopUpgrades();
   townUpgrades: TownUpgrades = defaultTownUpgrades();
+  combatUpgrades: CombatUpgrades = defaultCombatUpgrades();
   npcs: Record<string, NpcState> = defaultNpcStates();
 
   dayTimeRemaining = DAY_LENGTH_MS;
@@ -60,10 +77,13 @@ class GameState {
   goldEarnedToday = 0;
   cardsSoldToday = 0;
 
-  maxHp = 100;
-  hp = 100;
+  hp = PLAYER_BASE_MAX_HP;
   /** Pack ids earned from combat, awaiting a free open at the counter. */
   ownedPacks: string[] = [];
+
+  /** Always includes 'bramble', the free starting zone. */
+  unlockedZones: string[] = ['bramble'];
+  currentZoneId = 'bramble';
 
   get season(): Season {
     return SEASONS[Math.floor((this.day - 1) / DAYS_PER_SEASON) % SEASONS.length];
@@ -71,6 +91,20 @@ class GameState {
 
   get isFestivalDay(): boolean {
     return this.townUpgrades.festivalsUnlocked && this.day % 7 === 0;
+  }
+
+  get attackDamage(): number {
+    const tiers = [this.combatUpgrades.weaponTier1, this.combatUpgrades.weaponTier2, this.combatUpgrades.weaponTier3].filter(
+      Boolean,
+    ).length;
+    return PLAYER_BASE_ATTACK_DAMAGE + tiers * WEAPON_TIER_DAMAGE_BONUS;
+  }
+
+  get maxHp(): number {
+    const tiers = [this.combatUpgrades.vitalityTier1, this.combatUpgrades.vitalityTier2, this.combatUpgrades.vitalityTier3].filter(
+      Boolean,
+    ).length;
+    return PLAYER_BASE_MAX_HP + tiers * VITALITY_TIER_HP_BONUS;
   }
 
   addGold(amount: number) {
@@ -154,6 +188,37 @@ class GameState {
     return true;
   }
 
+  purchaseCombatUpgrade(key: keyof CombatUpgrades, cost: number): boolean {
+    if (this.combatUpgrades[key]) return false;
+    if (!this.spendGold(cost)) return false;
+    this.combatUpgrades[key] = true;
+    if (key.startsWith('vitality')) {
+      // maxHp is derived from combatUpgrades, so it's already gone up by
+      // the time we read it here — top the player off by the same amount
+      // rather than fully healing, so a mid-fight purchase still means
+      // something changed the same instant it was bought.
+      this.hp = Math.min(this.maxHp, this.hp + VITALITY_TIER_HP_BONUS);
+      bus.emit('hp-changed', this.hp);
+    }
+    bus.emit('combat-upgrades-changed', this.combatUpgrades);
+    return true;
+  }
+
+  unlockZone(zoneId: string, cost: number): boolean {
+    if (this.unlockedZones.includes(zoneId)) return false;
+    if (!this.spendGold(cost)) return false;
+    this.unlockedZones.push(zoneId);
+    bus.emit('zones-changed', this.unlockedZones);
+    return true;
+  }
+
+  travelToZone(zoneId: string): boolean {
+    if (!this.unlockedZones.includes(zoneId)) return false;
+    this.currentZoneId = zoneId;
+    bus.emit('zone-changed', zoneId);
+    return true;
+  }
+
   talkToNpc(npcId: string): { alreadyTalkedToday: boolean; gain: number } {
     const npc = this.npcs[npcId];
     if (npc.lastTalkedDay === this.day) return { alreadyTalkedToday: true, gain: 0 };
@@ -202,6 +267,13 @@ class GameState {
     if (idx < 0) return false;
     this.ownedPacks.splice(idx, 1);
     bus.emit('packs-changed', this.ownedPacks);
+    return true;
+  }
+
+  /** Sells one owned (combat-dropped) pack, unopened, for a guaranteed price. */
+  sellOwnedPack(packId: string, price: number): boolean {
+    if (!this.consumeOwnedPack(packId)) return false;
+    this.addGold(price);
     return true;
   }
 

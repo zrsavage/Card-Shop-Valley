@@ -13,7 +13,7 @@ export interface EnemyDef {
   packWeights: Record<string, number>;
 }
 
-export const ENEMY_DEFS: EnemyDef[] = [
+const BRAMBLE_ENEMIES: EnemyDef[] = [
   {
     id: 'sprite',
     name: 'Wild Sprite',
@@ -49,6 +49,104 @@ export const ENEMY_DEFS: EnemyDef[] = [
     radius: 20,
     packDropChance: 0.3,
     packWeights: { starter: 15, deluxe: 45, mythic: 40 },
+  },
+];
+
+const HOLLOW_ENEMIES: EnemyDef[] = [
+  {
+    id: 'stalker',
+    name: 'Hollow Stalker',
+    color: 0x2d6a4f,
+    maxHp: 60,
+    damage: 14,
+    speed: 80,
+    aggroRange: 150,
+    radius: 14,
+    packDropChance: 0.4,
+    packWeights: { starter: 30, deluxe: 55, mythic: 15 },
+  },
+  {
+    id: 'ravager',
+    name: 'Bog Ravager',
+    color: 0x40514e,
+    maxHp: 110,
+    damage: 20,
+    speed: 50,
+    aggroRange: 180,
+    radius: 22,
+    packDropChance: 0.35,
+    packWeights: { starter: 10, deluxe: 50, mythic: 40 },
+  },
+];
+
+const FROSTBACK_ENEMIES: EnemyDef[] = [
+  {
+    id: 'frostwarden',
+    name: 'Frost Warden',
+    color: 0x4fc3f7,
+    maxHp: 150,
+    damage: 26,
+    speed: 60,
+    aggroRange: 190,
+    radius: 22,
+    packDropChance: 0.45,
+    packWeights: { starter: 0, deluxe: 40, mythic: 60 },
+  },
+  {
+    id: 'colossus',
+    name: 'Rime Colossus',
+    color: 0xcaf0f8,
+    maxHp: 260,
+    damage: 34,
+    speed: 40,
+    aggroRange: 200,
+    radius: 28,
+    packDropChance: 0.4,
+    packWeights: { starter: 0, deluxe: 15, mythic: 85 },
+  },
+];
+
+/** Backward-compatible alias — the Bramble Wilds' own enemy roster. */
+export const ENEMY_DEFS: EnemyDef[] = BRAMBLE_ENEMIES;
+
+export interface ZoneDef {
+  id: string;
+  name: string;
+  description: string;
+  /** Gold cost to unlock; 0 for the always-available starting zone. */
+  unlockCost: number;
+  enemies: EnemyDef[];
+  maxEnemies: number;
+  spawnIntervalRange: [number, number];
+}
+
+export const ZONE_DEFS: ZoneDef[] = [
+  {
+    id: 'bramble',
+    name: 'Bramble Wilds',
+    description: 'The wilds just past town. Easy pickings, mostly Starter and Deluxe packs.',
+    unlockCost: 0,
+    enemies: BRAMBLE_ENEMIES,
+    maxEnemies: 6,
+    spawnIntervalRange: [2500, 5000],
+  },
+  {
+    id: 'hollow',
+    name: 'Deep Hollow',
+    description: 'Tougher foes further out, with more enemies at once and better pack odds.',
+    unlockCost: 500,
+    enemies: HOLLOW_ENEMIES,
+    maxEnemies: 8,
+    spawnIntervalRange: [1800, 3800],
+  },
+  {
+    id: 'frostback',
+    name: 'Frostback Reaches',
+    description: 'The hardest ground — dense, dangerous, and heavily favors Mythic packs.',
+    unlockCost: 1500,
+    enemies: FROSTBACK_ENEMIES,
+    maxEnemies: 10,
+    spawnIntervalRange: [1500, 3000],
   },
 ];
 

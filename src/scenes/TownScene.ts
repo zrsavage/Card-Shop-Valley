@@ -117,11 +117,13 @@ export default class TownScene extends Phaser.Scene {
     bus.on('paused-changed', this.onPausedChanged, this);
     bus.on('town-upgrades-changed', this.onTownUpgradesChanged, this);
     bus.on('day-changed', this.onDayChanged, this);
+    bus.on('enter-wilds', this.onEnterWilds, this);
 
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       bus.off('paused-changed', this.onPausedChanged, this);
       bus.off('town-upgrades-changed', this.onTownUpgradesChanged, this);
       bus.off('day-changed', this.onDayChanged, this);
+      bus.off('enter-wilds', this.onEnterWilds, this);
     });
   }
 
@@ -135,6 +137,10 @@ export default class TownScene extends Phaser.Scene {
 
   private onDayChanged() {
     this.ground.setFillStyle(GROUND_TINTS[gameState.season]);
+  }
+
+  private onEnterWilds() {
+    this.scene.start('Wilds');
   }
 
   private updateNpcPositions() {
@@ -152,7 +158,6 @@ export default class TownScene extends Phaser.Scene {
       this.handleMovement();
       this.handleInteract();
       this.handleDoorTrigger();
-      this.handleWildsTrigger();
       gameState.tickDay(delta);
       this.updateNpcPositions();
     } else {
@@ -180,19 +185,13 @@ export default class TownScene extends Phaser.Scene {
     }
   }
 
-  private handleWildsTrigger() {
-    const d = Phaser.Math.Distance.Between(this.player.x, this.player.y, TOWN_TO_WILDS_TRIGGER.x, TOWN_TO_WILDS_TRIGGER.y);
-    if (d < 40) {
-      this.scene.start('Wilds');
-    }
-  }
-
-  private nearestInteractable(): { type: 'townhall' | 'npc'; id?: string; x: number; y: number } | null {
-    const candidates: { type: 'townhall' | 'npc'; id?: string; x: number; y: number }[] = [
+  private nearestInteractable(): { type: 'townhall' | 'npc' | 'wildsgate'; id?: string; x: number; y: number } | null {
+    const candidates: { type: 'townhall' | 'npc' | 'wildsgate'; id?: string; x: number; y: number }[] = [
       { type: 'townhall', x: TOWN_HALL_POS.x, y: TOWN_HALL_POS.y },
+      { type: 'wildsgate', x: TOWN_TO_WILDS_TRIGGER.x, y: TOWN_TO_WILDS_TRIGGER.y },
       ...this.npcVisuals.map((v) => ({ type: 'npc' as const, id: v.id, x: v.sprite.x, y: v.sprite.y })),
     ];
-    let best: { type: 'townhall' | 'npc'; id?: string; x: number; y: number } | null = null;
+    let best: { type: 'townhall' | 'npc' | 'wildsgate'; id?: string; x: number; y: number } | null = null;
     let bestDist = INTERACT_RANGE;
     for (const c of candidates) {
       const d = Phaser.Math.Distance.Between(this.player.x, this.player.y, c.x, c.y);
@@ -207,7 +206,7 @@ export default class TownScene extends Phaser.Scene {
   private handleInteract() {
     const target = this.nearestInteractable();
     if (target) {
-      const label = target.type === 'townhall' ? 'Press E: Town Hall' : `Press E: Talk`;
+      const label = target.type === 'townhall' ? 'Press E: Town Hall' : target.type === 'wildsgate' ? 'Press E: Wilds' : `Press E: Talk`;
       this.promptText.setText(label).setPosition(target.x, target.y - 45).setVisible(true);
     } else {
       this.promptText.setVisible(false);
@@ -216,6 +215,8 @@ export default class TownScene extends Phaser.Scene {
     if (Phaser.Input.Keyboard.JustDown(this.interactKey) && target) {
       if (target.type === 'townhall') {
         bus.emit('open-townhall');
+      } else if (target.type === 'wildsgate') {
+        bus.emit('open-zonemap');
       } else {
         bus.emit('open-npc', target.id);
       }

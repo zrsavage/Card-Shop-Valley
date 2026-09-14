@@ -1,5 +1,5 @@
 import { gameState, bus } from './state';
-import type { Card, ShelfSlot, ShopUpgrades, TownUpgrades, NpcState } from './types';
+import type { Card, ShelfSlot, ShopUpgrades, TownUpgrades, CombatUpgrades, NpcState } from './types';
 
 const SAVE_KEY = 'card-shop-valley-save-v1';
 
@@ -10,8 +10,11 @@ interface SaveData {
   shelves: ShelfSlot[];
   shopUpgrades: ShopUpgrades;
   townUpgrades: TownUpgrades;
+  combatUpgrades: CombatUpgrades;
   npcs: Record<string, NpcState>;
   ownedPacks: string[];
+  unlockedZones: string[];
+  currentZoneId: string;
 }
 
 export function saveGame() {
@@ -23,8 +26,11 @@ export function saveGame() {
       shelves: gameState.shelves,
       shopUpgrades: gameState.shopUpgrades,
       townUpgrades: gameState.townUpgrades,
+      combatUpgrades: gameState.combatUpgrades,
       npcs: gameState.npcs,
       ownedPacks: gameState.ownedPacks,
+      unlockedZones: gameState.unlockedZones,
+      currentZoneId: gameState.currentZoneId,
     };
     localStorage.setItem(SAVE_KEY, JSON.stringify(data));
   } catch {
@@ -53,12 +59,15 @@ export function loadGame(): boolean {
     }
     if (data.shopUpgrades) Object.assign(gameState.shopUpgrades, data.shopUpgrades);
     if (data.townUpgrades) Object.assign(gameState.townUpgrades, data.townUpgrades);
+    if (data.combatUpgrades) Object.assign(gameState.combatUpgrades, data.combatUpgrades);
     if (data.npcs) {
       for (const [id, npcState] of Object.entries(data.npcs)) {
         if (gameState.npcs[id]) gameState.npcs[id] = npcState;
       }
     }
     if (Array.isArray(data.ownedPacks)) gameState.ownedPacks = data.ownedPacks;
+    if (Array.isArray(data.unlockedZones)) gameState.unlockedZones = data.unlockedZones;
+    if (typeof data.currentZoneId === 'string') gameState.currentZoneId = data.currentZoneId;
     return true;
   } catch {
     return false;
@@ -87,8 +96,11 @@ export function initAutosave() {
   bus.on('day-changed', queueSave);
   bus.on('shop-upgrades-changed', queueSave);
   bus.on('town-upgrades-changed', queueSave);
+  bus.on('combat-upgrades-changed', queueSave);
   bus.on('npc-changed', queueSave);
   bus.on('shelves-changed', queueSave);
   bus.on('inventory-changed', queueSave);
   bus.on('packs-changed', queueSave);
+  bus.on('zones-changed', queueSave);
+  bus.on('zone-changed', queueSave);
 }

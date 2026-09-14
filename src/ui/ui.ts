@@ -1,10 +1,11 @@
-import { gameState, bus, DAY_LENGTH_MS, type DaySummary } from '../game/state';
+import { gameState, bus, DAY_LENGTH_MS, WEAPON_TIER_DAMAGE_BONUS, VITALITY_TIER_HP_BONUS, type DaySummary } from '../game/state';
 import { PACKS, openPack, type PackDefinition } from '../game/packs';
 import { RARITY_LABELS, SEASON_PRICE_MULTIPLIER } from '../game/cards';
 import { NPCS, friendshipTier, FRIENDSHIP_TIER_LABELS } from '../game/npcs';
 import { generateCardArtSvg, cardArtImagePath } from '../game/cardArt';
 import { SEASON_SET_NAME } from '../game/species';
-import type { Card, ShopUpgrades, TownUpgrades } from '../game/types';
+import { ZONE_DEFS } from '../game/combat';
+import type { Card, ShopUpgrades, TownUpgrades, CombatUpgrades } from '../game/types';
 
 function effectivePackCost(pack: PackDefinition): number {
   return Math.round(pack.cost * SEASON_PRICE_MULTIPLIER[gameState.season]);
@@ -101,6 +102,47 @@ const TOWN_UPGRADE_DEFS: TownUpgradeDef[] = [
   { key: 'festivalsUnlocked', name: 'Sponsor the Festival', cost: 600, description: 'Every 7th day becomes a Festival with a rush of customers.' },
 ];
 
+interface CombatUpgradeDef {
+  key: keyof CombatUpgrades;
+  name: string;
+  cost: number;
+  description: string;
+  requiresKey?: keyof CombatUpgrades;
+}
+
+const COMBAT_UPGRADE_DEFS: CombatUpgradeDef[] = [
+  { key: 'weaponTier1', name: 'Sharpen Weapon I', cost: 150, description: `+${WEAPON_TIER_DAMAGE_BONUS} attack damage in the Wilds.` },
+  {
+    key: 'weaponTier2',
+    name: 'Sharpen Weapon II',
+    cost: 400,
+    description: `+${WEAPON_TIER_DAMAGE_BONUS} more attack damage.`,
+    requiresKey: 'weaponTier1',
+  },
+  {
+    key: 'weaponTier3',
+    name: 'Sharpen Weapon III',
+    cost: 900,
+    description: `+${WEAPON_TIER_DAMAGE_BONUS} more attack damage.`,
+    requiresKey: 'weaponTier2',
+  },
+  { key: 'vitalityTier1', name: 'Vitality I', cost: 150, description: `+${VITALITY_TIER_HP_BONUS} max HP.` },
+  {
+    key: 'vitalityTier2',
+    name: 'Vitality II',
+    cost: 400,
+    description: `+${VITALITY_TIER_HP_BONUS} more max HP.`,
+    requiresKey: 'vitalityTier1',
+  },
+  {
+    key: 'vitalityTier3',
+    name: 'Vitality III',
+    cost: 900,
+    description: `+${VITALITY_TIER_HP_BONUS} more max HP.`,
+    requiresKey: 'vitalityTier2',
+  },
+];
+
 function upgradeRowHtml(
   key: string,
   name: string,
@@ -156,6 +198,7 @@ function ownedPacksHtml(): string {
             <div class="pack-meta">${pack.cardCount} cards &middot; ${SEASON_SET_NAME[gameState.season]}</div>
           </div>
           <button class="btn open-owned-pack-btn" data-pack="${id}">Open Free</button>
+          <button class="btn btn-secondary sell-owned-pack-btn" data-pack="${id}">Sell ${pack.sellValue}g</button>
         </div>
       `;
     })
@@ -209,6 +252,14 @@ function openCounterModal() {
       const pack = PACKS.find((p) => p.id === packId) as PackDefinition;
       const cards = openPack(pack, gameState.season);
       openPackRevealModal(pack, cards);
+    });
+  });
+  modalLayer.querySelectorAll<HTMLButtonElement>('.sell-owned-pack-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const packId = btn.dataset.pack!;
+      const pack = PACKS.find((p) => p.id === packId) as PackDefinition;
+      if (!gameState.sellOwnedPack(packId, pack.sellValue)) return;
+      openCounterModal();
     });
   });
   modalLayer.querySelectorAll<HTMLButtonElement>('.buy-upgrade-btn').forEach((btn) => {
@@ -320,18 +371,76 @@ function openTownHallModal() {
     return upgradeRowHtml(def.key, def.name, def.cost, def.description, owned, false);
   }).join('');
 
+  const combatRows = COMBAT_UPGRADE_DEFS.map((def) => {
+    const owned = gameState.combatUpgrades[def.key];
+    const locked = !!def.requiresKey && !gameState.combatUpgrades[def.requiresKey];
+    return upgradeRowHtml(def.key, def.name, def.cost, def.description, owned, locked);
+  }).join('');
+
   renderModal(`
     <h2>Town Hall</h2>
     <p class="modal-sub">Invest your gold back into the town.</p>
     <div class="pack-list">${rows}</div>
+    <h2 class="modal-section-title">Adventuring Upgrades</h2>
+    <p class="modal-sub">Attack: ${gameState.attackDamage} &middot; Max HP: ${gameState.maxHp}</p>
+    <div class="pack-list">${combatRows}</div>
     <button class="btn btn-secondary close-btn">Close</button>
   `);
 
   modalLayer.querySelectorAll<HTMLButtonElement>('.buy-upgrade-btn').forEach((btn) => {
     btn.addEventListener('click', () => {
-      const def = TOWN_UPGRADE_DEFS.find((d) => d.key === btn.dataset.key)!;
-      gameState.purchaseTownUpgrade(def.key, def.cost);
+      const townDef = TOWN_UPGRADE_DEFS.find((d) => d.key === btn.dataset.key);
+      if (townDef) {
+        gameState.purchaseTownUpgrade(townDef.key, townDef.cost);
+      } else {
+        const combatDef = COMBAT_UPGRADE_DEFS.find((d) => d.key === btn.dataset.key)!;
+        gameState.purchaseCombatUpgrade(combatDef.key, combatDef.cost);
+      }
       openTownHallModal();
+    });
+  });
+  modalLayer.querySelector('.close-btn')!.addEventListener('click', closeModal);
+}
+
+// --- Wilds zone map ---
+
+function openZoneMapModal() {
+  const rows = ZONE_DEFS.map((zone) => {
+    const unlocked = gameState.unlockedZones.includes(zone.id);
+    const current = gameState.currentZoneId === zone.id;
+    const actionHtml = unlocked
+      ? `<button class="btn enter-zone-btn" data-zone="${zone.id}">Enter</button>`
+      : `<button class="btn unlock-zone-btn" data-zone="${zone.id}" ${gameState.gold < zone.unlockCost ? 'disabled' : ''}>Unlock ${zone.unlockCost}g</button>`;
+    return `
+      <div class="pack-row">
+        <div class="pack-info">
+          <div class="pack-name">${zone.name}${current ? ' (current)' : ''}</div>
+          <div class="pack-meta">${zone.description}</div>
+        </div>
+        ${actionHtml}
+      </div>
+    `;
+  }).join('');
+
+  renderModal(`
+    <h2>Wilds Map</h2>
+    <p class="modal-sub">Pick where to hunt. Tougher zones spawn more enemies and drop better packs.</p>
+    <div class="pack-list">${rows}</div>
+    <button class="btn btn-secondary close-btn">Close</button>
+  `);
+
+  modalLayer.querySelectorAll<HTMLButtonElement>('.unlock-zone-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const zone = ZONE_DEFS.find((z) => z.id === btn.dataset.zone)!;
+      gameState.unlockZone(zone.id, zone.unlockCost);
+      openZoneMapModal();
+    });
+  });
+  modalLayer.querySelectorAll<HTMLButtonElement>('.enter-zone-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      gameState.travelToZone(btn.dataset.zone!);
+      closeModal();
+      bus.emit('enter-wilds');
     });
   });
   modalLayer.querySelector('.close-btn')!.addEventListener('click', closeModal);
@@ -415,7 +524,7 @@ export function initUI() {
   root.innerHTML = `
     <div id="hud">
       <div class="hud-stat">Gold: <span id="gold-value">${gameState.gold}</span>g</div>
-      <div class="hud-stat">❤ <span id="hp-value">${gameState.hp}</span>/${gameState.maxHp}</div>
+      <div class="hud-stat">❤ <span id="hp-value">${gameState.hp}</span>/<span id="max-hp-value">${gameState.maxHp}</span></div>
       <div class="hud-stat">Day <span id="day-value">${gameState.day}</span> &middot; <span id="season-value">${gameState.season}</span></div>
       <div id="festival-banner" class="festival-banner" ${gameState.isFestivalDay ? '' : 'hidden'}>🎉 Festival</div>
       <div class="hud-timebar"><div id="time-fill" class="time-fill"></div></div>
@@ -441,8 +550,14 @@ export function initUI() {
     });
     modalLayer.querySelectorAll<HTMLButtonElement>('.buy-upgrade-btn').forEach((btn) => {
       const def =
-        SHOP_UPGRADE_DEFS.find((d) => d.key === btn.dataset.key) ?? TOWN_UPGRADE_DEFS.find((d) => d.key === btn.dataset.key);
+        SHOP_UPGRADE_DEFS.find((d) => d.key === btn.dataset.key) ??
+        TOWN_UPGRADE_DEFS.find((d) => d.key === btn.dataset.key) ??
+        COMBAT_UPGRADE_DEFS.find((d) => d.key === btn.dataset.key);
       if (def) btn.disabled = gold < def.cost;
+    });
+    modalLayer.querySelectorAll<HTMLButtonElement>('.unlock-zone-btn').forEach((btn) => {
+      const zone = ZONE_DEFS.find((z) => z.id === btn.dataset.zone);
+      if (zone) btn.disabled = gold < zone.unlockCost;
     });
   });
   bus.on('day-changed', (day: number) => {
@@ -459,9 +574,14 @@ export function initUI() {
     const el = document.getElementById('hp-value');
     if (el) el.textContent = String(Math.round(hp));
   });
+  bus.on('combat-upgrades-changed', () => {
+    const el = document.getElementById('max-hp-value');
+    if (el) el.textContent = String(gameState.maxHp);
+  });
   bus.on('open-counter', openCounterModal);
   bus.on('open-shelf', (shelfId: string) => openShelfModal(shelfId));
   bus.on('day-summary', (summary: DaySummary) => openDaySummaryModal(summary));
   bus.on('open-townhall', openTownHallModal);
+  bus.on('open-zonemap', openZoneMapModal);
   bus.on('open-npc', (npcId: string) => openNpcModal(npcId));
 }

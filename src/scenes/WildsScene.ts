@@ -1,15 +1,13 @@
 import Phaser from 'phaser';
 import { gameState, bus } from '../game/state';
 import { showFloatingText } from '../game/fx';
-import { ENEMY_DEFS, rollPackDrop, type EnemyDef } from '../game/combat';
+import { ZONE_DEFS, rollPackDrop, type EnemyDef, type ZoneDef } from '../game/combat';
 import { PACKS } from '../game/packs';
 import { WILDS_FROM_TOWN_POS, WILDS_TO_TOWN_TRIGGER } from '../game/layout';
 
 const PLAYER_SPEED = 190;
 const MELEE_RANGE = 55;
-const PLAYER_ATTACK_DAMAGE = 14;
 const ATTACK_COOLDOWN_MS = 400;
-const MAX_ENEMIES = 6;
 const CONTACT_DAMAGE_COOLDOWN_MS = 900;
 const HP_REGEN_DELAY_MS = 3000;
 const HP_REGEN_PER_SEC = 6;
@@ -35,12 +33,14 @@ export default class WildsScene extends Phaser.Scene {
   private spawnTimer = 0;
   private nextSpawnAt = 1500;
   private lastDamageTime = 0;
+  private zone!: ZoneDef;
 
   constructor() {
     super('Wilds');
   }
 
   create() {
+    this.zone = ZONE_DEFS.find((z) => z.id === gameState.currentZoneId) ?? ZONE_DEFS[0];
     this.cameras.main.setBackgroundColor('#243318');
     this.enemies = [];
     this.attackCooldownRemaining = 0;
@@ -55,6 +55,11 @@ export default class WildsScene extends Phaser.Scene {
       const y = Phaser.Math.Between(50, 550);
       this.add.circle(x, y, Phaser.Math.Between(10, 22), 0x2f4526, 0.6).setDepth(0);
     }
+
+    this.add
+      .text(400, 56, this.zone.name, { fontSize: '13px', color: '#fff8ec', backgroundColor: '#000000aa', padding: { x: 8, y: 3 } })
+      .setOrigin(0.5, 0)
+      .setDepth(10);
 
     // Path back to town (left wall)
     this.add.rectangle(28, WILDS_TO_TOWN_TRIGGER.y, 10, 110, 0x4a3728).setDepth(1);
@@ -161,7 +166,7 @@ export default class WildsScene extends Phaser.Scene {
     for (const enemy of [...this.enemies]) {
       const d = Phaser.Math.Distance.Between(enemy.sprite.x, enemy.sprite.y, this.player.x, this.player.y);
       if (d < MELEE_RANGE) {
-        this.damageEnemy(enemy, PLAYER_ATTACK_DAMAGE);
+        this.damageEnemy(enemy, gameState.attackDamage);
       }
     }
   }
@@ -244,13 +249,14 @@ export default class WildsScene extends Phaser.Scene {
     this.spawnTimer += delta;
     if (this.spawnTimer < this.nextSpawnAt) return;
     this.spawnTimer = 0;
-    this.nextSpawnAt = Phaser.Math.Between(2500, 5000);
-    if (this.enemies.length >= MAX_ENEMIES) return;
+    const [min, max] = this.zone.spawnIntervalRange;
+    this.nextSpawnAt = Phaser.Math.Between(min, max);
+    if (this.enemies.length >= this.zone.maxEnemies) return;
     this.spawnEnemy();
   }
 
   private spawnEnemy() {
-    const def = Phaser.Utils.Array.GetRandom(ENEMY_DEFS);
+    const def = Phaser.Utils.Array.GetRandom(this.zone.enemies);
     let x = 400;
     let y = 300;
     for (let attempt = 0; attempt < 10; attempt++) {

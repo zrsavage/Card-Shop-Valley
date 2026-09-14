@@ -35,6 +35,15 @@ export interface TownUpgrades {
   festivalsUnlocked: boolean;
 }
 
+export interface CombatUpgrades {
+  weaponTier1: boolean;
+  weaponTier2: boolean;
+  weaponTier3: boolean;
+  vitalityTier1: boolean;
+  vitalityTier2: boolean;
+  vitalityTier3: boolean;
+}
+
 export interface NpcState {
   friendship: number;
   lastTalkedDay: number;
