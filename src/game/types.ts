@@ -13,6 +13,8 @@ export interface Card {
   stage: number;
   /** Total number of stages in this card's evolution line, for "Stage 2/3" display. */
   stageCount: number;
+  /** A rare alternate-look version of the same card, worth much more. */
+  shiny: boolean;
 }
 
 export interface ShelfSlot {
@@ -28,6 +30,8 @@ export interface ShopUpgrades {
   extraShelvesTier2: boolean;
   marketingSign: boolean;
   appraisersLoupe: boolean;
+  bagTier1: boolean;
+  bagTier2: boolean;
 }
 
 export interface TownUpgrades {
@@ -44,7 +48,15 @@ export interface CombatUpgrades {
   vitalityTier3: boolean;
 }
 
+/** What an NPC currently wants gifted — season + rarity, not a specific
+ * card, so it's a real target without being frustratingly narrow. */
+export interface CardRequest {
+  season: Season;
+  rarity: Rarity;
+}
+
 export interface NpcState {
   friendship: number;
   lastTalkedDay: number;
+  request: CardRequest | null;
 }

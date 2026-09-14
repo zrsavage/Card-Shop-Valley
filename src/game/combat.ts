@@ -118,6 +118,11 @@ export interface ZoneDef {
   enemies: EnemyDef[];
   maxEnemies: number;
   spawnIntervalRange: [number, number];
+  /** Visual identity so each zone reads as a different place, not just a
+   * recolored enemy roster on the same ground. */
+  cameraBg: string;
+  groundColor: number;
+  decorationColor: number;
 }
 
 export const ZONE_DEFS: ZoneDef[] = [
@@ -129,6 +134,9 @@ export const ZONE_DEFS: ZoneDef[] = [
     enemies: BRAMBLE_ENEMIES,
     maxEnemies: 6,
     spawnIntervalRange: [2500, 5000],
+    cameraBg: '#243318',
+    groundColor: 0x3a5230,
+    decorationColor: 0x2f4526,
   },
   {
     id: 'hollow',
@@ -138,6 +146,9 @@ export const ZONE_DEFS: ZoneDef[] = [
     enemies: HOLLOW_ENEMIES,
     maxEnemies: 8,
     spawnIntervalRange: [1800, 3800],
+    cameraBg: '#161f16',
+    groundColor: 0x2d3b2a,
+    decorationColor: 0x1a241a,
   },
   {
     id: 'frostback',
@@ -147,6 +158,9 @@ export const ZONE_DEFS: ZoneDef[] = [
     enemies: FROSTBACK_ENEMIES,
     maxEnemies: 10,
     spawnIntervalRange: [1500, 3000],
+    cameraBg: '#14212a',
+    groundColor: 0x9fc3cc,
+    decorationColor: 0x6f96a0,
   },
 ];
 

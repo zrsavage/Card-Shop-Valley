@@ -1,4 +1,4 @@
-import { gameState, bus, WEAPON_TIER_DAMAGE_BONUS, VITALITY_TIER_HP_BONUS, SEASONS, type DaySummary } from '../game/state';
+import { gameState, bus, WEAPON_TIER_DAMAGE_BONUS, VITALITY_TIER_HP_BONUS, SEASONS, ENERGY_TONIC_COST, ENERGY_TONIC_RESTORE, BAG_TIER_CAPACITY_BONUS, type DaySummary } from '../game/state';
 import { PACKS, openPack, type PackDefinition } from '../game/packs';
 import { RARITIES, RARITY_LABELS, RARITY_BASE_VALUE, SEASON_PRICE_MULTIPLIER } from '../game/cards';
 import { NPCS, friendshipTier, FRIENDSHIP_TIER_LABELS } from '../game/npcs';
@@ -6,7 +6,13 @@ import { generateCardArtSvg, cardArtImagePath } from '../game/cardArt';
 import { SEASON_SET_NAME, SEASON_CARD_POOL, STAGE_VALUE_MULTIPLIER, type SpeciesCard } from '../game/species';
 import { ZONE_DEFS } from '../game/combat';
 import { LEGACY_MILESTONES, LEGACY_CAPSTONE, type LegacyMilestone } from '../game/legacy';
+import { priceReactionFor } from '../game/pricing';
+import { playCardPop, playPackOpen, playLegendary, playChime, playError } from '../game/audio';
 import type { Card, ShopUpgrades, TownUpgrades, CombatUpgrades, Season, Rarity } from '../game/types';
+
+/** Rush cost is a steep premium over the overnight price — pay for
+ * convenience, not a strictly better deal than waiting. */
+const RUSH_DELIVERY_MULTIPLIER = 1.8;
 
 function effectivePackCost(pack: PackDefinition): number {
   return Math.round(pack.cost * SEASON_PRICE_MULTIPLIER[gameState.season]);
@@ -32,11 +38,12 @@ function cardChipHtml(card: Card, small = false): string {
   `;
   const stageBadge = card.stageCount > 1 ? `<div class="stage-badge">${card.stage}/${card.stageCount}</div>` : '';
   const setLine = small ? '' : `<div class="card-set-name">${SEASON_SET_NAME[card.season]}</div>`;
+  const shinyBadge = card.shiny ? `<div class="shiny-badge">&#10022; Shiny</div>` : '';
   return `
-    <div class="card-chip rarity-${card.rarity}${small ? ' card-chip-small' : ''}">
+    <div class="card-chip rarity-${card.rarity}${small ? ' card-chip-small' : ''}${card.shiny ? ' card-chip-shiny' : ''}">
       <div class="card-inner">
         <div class="card-name">${card.name}</div>
-        <div class="card-art-window">${art}${stageBadge}</div>
+        <div class="card-art-window">${art}${stageBadge}${shinyBadge}</div>
         <div class="card-footer">
           <span class="card-rarity-pill rarity-pill-${card.rarity}">${RARITY_LABELS[card.rarity]}</span>
         </div>
@@ -60,17 +67,19 @@ function cardSlotHtml(card: Card, small = false): string {
 // A single-line, compact row for picking a card out of a list (stocking a
 // shelf, choosing a gift) — a thumbnail plus name/rarity, not a full card
 // face, so a long list reads as an organized list instead of a wall of cards.
-function compactCardRowHtml(card: Card, idx: number, trailingHtml: string): string {
+function compactCardRowHtml(card: Card, idx: number, trailingHtml: string, highlight = false): string {
+  const requestTag = highlight ? `<div class="codex-request-tag">&#9733; Wanted!</div>` : '';
   return `
-    <div class="codex-row" data-idx="${idx}">
+    <div class="codex-row${highlight ? ' codex-row-requested' : ''}" data-idx="${idx}">
       <div class="codex-thumb-wrap">
         <img class="codex-thumb" src="${cardArtImagePath(card.speciesId)}" alt=""
           onerror="this.style.display='none'; this.nextElementSibling.style.display='block';" />
         <div class="codex-thumb-fallback" style="display:none">${generateCardArtSvg(card.speciesId, card.season, card.rarity, card.stage)}</div>
       </div>
       <div class="codex-info">
-        <div class="codex-name">${card.name}</div>
+        <div class="codex-name">${card.name}${card.shiny ? ' <span class="shiny-tag">&#10022;</span>' : ''}</div>
         <div class="codex-meta">${RARITY_LABELS[card.rarity]} &middot; base ${card.baseValue}g</div>
+        ${requestTag}
       </div>
       ${trailingHtml}
     </div>
@@ -108,6 +117,14 @@ const SHOP_UPGRADE_DEFS: ShopUpgradeDef[] = [
   },
   { key: 'marketingSign', name: 'Marketing Sign', cost: 200, description: 'Customers visit the shop more often.' },
   { key: 'appraisersLoupe', name: "Appraiser's Loupe", cost: 400, description: 'Customers tolerate higher markups.' },
+  { key: 'bagTier1', name: 'Bigger Bag I', cost: 250, description: `+${BAG_TIER_CAPACITY_BONUS} bag capacity.` },
+  {
+    key: 'bagTier2',
+    name: 'Bigger Bag II',
+    cost: 650,
+    description: `+${BAG_TIER_CAPACITY_BONUS} more bag capacity.`,
+    requiresKey: 'bagTier1',
+  },
 ];
 
 interface TownUpgradeDef {
@@ -208,8 +225,9 @@ function packCountRows(packIds: string[], ready: boolean): string {
     .map(([id, count]) => {
       const pack = PACKS.find((p) => p.id === id);
       if (!pack) return '';
+      const canOpen = gameState.hasBagSpace(pack.cardCount);
       const actions = ready
-        ? `<button class="btn open-owned-pack-btn" data-pack="${id}">Open</button>
+        ? `<button class="btn open-owned-pack-btn" data-pack="${id}" ${canOpen ? '' : 'disabled'} title="${canOpen ? '' : 'Bag is full — make room first'}">Open</button>
            <button class="btn btn-secondary sell-owned-pack-btn" data-pack="${id}">Sell ${pack.sellValue}g</button>`
         : `<span class="pack-pending-tag">Arrives tomorrow</span>`;
       return `
@@ -240,10 +258,30 @@ function ownedPacksHtml(): string {
 
 // --- Counter (packs + shop upgrades) ---
 
+function rushCost(pack: PackDefinition): number {
+  return Math.round(effectivePackCost(pack) * RUSH_DELIVERY_MULTIPLIER);
+}
+
+function provisionsHtml(): string {
+  const energyFull = gameState.energy >= gameState.maxEnergy;
+  const canAfford = gameState.gold >= ENERGY_TONIC_COST;
+  return `
+    <div class="pack-row">
+      <div class="pack-swatch" style="background:#7ee787"></div>
+      <div class="pack-info">
+        <div class="pack-name">Energy Tonic</div>
+        <div class="pack-meta">Restores ${ENERGY_TONIC_RESTORE} energy on the spot.</div>
+      </div>
+      <button class="btn buy-tonic-btn" ${energyFull || !canAfford ? 'disabled' : ''} title="${energyFull ? 'Energy already full' : ''}">${ENERGY_TONIC_COST}g</button>
+    </div>
+  `;
+}
+
 function openCounterModal() {
   const multiplier = SEASON_PRICE_MULTIPLIER[gameState.season];
   const packRows = PACKS.map((p) => {
     const cost = effectivePackCost(p);
+    const rush = rushCost(p);
     return `
       <div class="pack-row">
         <div class="pack-swatch" style="background:${colorToCss(p.color)}"></div>
@@ -251,7 +289,10 @@ function openCounterModal() {
           <div class="pack-name">${p.name}</div>
           <div class="pack-meta">${p.cardCount} cards &middot; ${SEASON_SET_NAME[gameState.season]}</div>
         </div>
-        <button class="btn buy-pack-btn" data-pack="${p.id}" ${gameState.gold < cost ? 'disabled' : ''}>${cost}g</button>
+        <div class="pack-actions-col">
+          <button class="btn btn-small buy-pack-btn" data-pack="${p.id}" ${gameState.gold < cost ? 'disabled' : ''} title="Arrives tomorrow">${cost}g</button>
+          <button class="btn btn-small btn-secondary rush-pack-btn" data-pack="${p.id}" ${gameState.gold < rush ? 'disabled' : ''} title="Get it right now, for a premium">Rush ${rush}g</button>
+        </div>
       </div>
     `;
   }).join('');
@@ -259,12 +300,14 @@ function openCounterModal() {
   renderModal(`
     <h2>Pack Counter</h2>
     <p class="modal-sub">
-      Now stocking <strong>${SEASON_SET_NAME[gameState.season]}</strong> — order a pack and it'll arrive tomorrow.
+      Now stocking <strong>${SEASON_SET_NAME[gameState.season]}</strong> — order a pack and it'll arrive tomorrow, or pay for Rush delivery to open it right now.
       ${multiplier !== 1 ? `<br><strong>${gameState.season} market:</strong> prices &times;${multiplier}.` : ''}
     </p>
     <div class="pack-list">${packRows}</div>
     <h2 class="modal-section-title">Your Packs</h2>
     ${ownedPacksHtml()}
+    <h2 class="modal-section-title">Provisions</h2>
+    <div class="pack-list">${provisionsHtml()}</div>
     <h2 class="modal-section-title">Shop Upgrades</h2>
     <div class="pack-list">${shopUpgradesHtml()}</div>
     <button class="btn btn-secondary close-btn">Close</button>
@@ -277,11 +320,22 @@ function openCounterModal() {
       openCounterModal();
     });
   });
+  modalLayer.querySelectorAll<HTMLButtonElement>('.rush-pack-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const pack = PACKS.find((p) => p.id === btn.dataset.pack) as PackDefinition;
+      if (!gameState.buyPackRush(pack.id, rushCost(pack))) return;
+      openCounterModal();
+    });
+  });
   modalLayer.querySelectorAll<HTMLButtonElement>('.open-owned-pack-btn').forEach((btn) => {
     btn.addEventListener('click', () => {
       const packId = btn.dataset.pack!;
-      if (!gameState.consumeOwnedPack(packId)) return;
       const pack = PACKS.find((p) => p.id === packId) as PackDefinition;
+      if (!gameState.hasBagSpace(pack.cardCount)) {
+        playError();
+        return;
+      }
+      if (!gameState.consumeOwnedPack(packId)) return;
       const cards = openPack(pack, gameState.season);
       openPackRevealModal(pack, cards);
     });
@@ -293,6 +347,11 @@ function openCounterModal() {
       if (!gameState.sellOwnedPack(packId, pack.sellValue)) return;
       openCounterModal();
     });
+  });
+  modalLayer.querySelector('.buy-tonic-btn')?.addEventListener('click', () => {
+    if (!gameState.buyEnergyTonic(ENERGY_TONIC_COST, ENERGY_TONIC_RESTORE)) return;
+    playChime();
+    openCounterModal();
   });
   modalLayer.querySelectorAll<HTMLButtonElement>('.buy-upgrade-btn').forEach((btn) => {
     btn.addEventListener('click', () => {
@@ -344,19 +403,33 @@ function openPackRevealModal(pack: PackDefinition, cards: Card[]) {
   let idx = 0;
   let timer: ReturnType<typeof setTimeout> | null = null;
 
-  function spotlight(card: Card) {
+  function spotlight(card: Card): boolean {
+    const bigMoment = card.rarity === 'legendary' || card.shiny;
     const wrap = document.createElement('div');
     wrap.className = 'card-spotlight';
     if (card.rarity === 'epic' || card.rarity === 'legendary') {
       wrap.classList.add('card-spotlight-flourish');
     }
+    if (bigMoment) {
+      wrap.classList.add('card-spotlight-big-moment');
+    }
     wrap.style.setProperty('--glow', REVEAL_GLOW_COLOR[card.rarity]);
     wrap.innerHTML = cardSlotHtml(card);
-    stage.replaceChildren(wrap);
+
+    if (bigMoment) {
+      const flash = document.createElement('div');
+      flash.className = 'reveal-flash';
+      stage.replaceChildren(flash, wrap);
+      playLegendary();
+    } else {
+      stage.replaceChildren(wrap);
+      playCardPop();
+    }
 
     const pip = pips[order.indexOf(card)];
     pip.style.setProperty('--pip-color', REVEAL_GLOW_COLOR[card.rarity]);
     pip.classList.add('reveal-pip-done');
+    return bigMoment;
   }
 
   function finish() {
@@ -374,9 +447,9 @@ function openPackRevealModal(pack: PackDefinition, cards: Card[]) {
       finish();
       return;
     }
-    spotlight(order[idx]);
+    const bigMoment = spotlight(order[idx]);
     idx += 1;
-    timer = setTimeout(revealNext, 620);
+    timer = setTimeout(revealNext, bigMoment ? 1500 : 620);
   }
 
   skipBtn.addEventListener('click', () => {
@@ -389,21 +462,41 @@ function openPackRevealModal(pack: PackDefinition, cards: Card[]) {
     closeModal();
   });
 
+  playPackOpen();
   revealNext();
 }
 
 // --- Shelf ---
+
+// A live "how will customers see this price" readout, shared by both the
+// reprice field on a stocked shelf and each price input while stocking one —
+// same thresholds customers actually react with (pricing.ts), shown as a
+// preview instead of the player having to guess and find out from a customer.
+function priceBadgeHtml(baseValue: number, price: number): string {
+  const ratio = price / Math.max(1, baseValue);
+  const tier = priceReactionFor(ratio);
+  return `<span class="price-badge ${tier.cssClass}">${tier.label}</span>`;
+}
+
+function updatePriceBadge(badge: HTMLElement, baseValue: number, price: number) {
+  const ratio = price / Math.max(1, baseValue);
+  const tier = priceReactionFor(ratio);
+  badge.className = `price-badge ${tier.cssClass}`;
+  badge.textContent = tier.label;
+}
 
 function openShelfModal(shelfId: string) {
   const shelf = gameState.shelves.find((s) => s.id === shelfId)!;
   let bodyHtml: string;
 
   if (shelf.card) {
+    const baseValue = shelf.card.baseValue;
     bodyHtml = `
       <div class="reveal-grid">${cardSlotHtml(shelf.card)}</div>
       <label class="field-label">Price
         <input type="number" id="reprice-input" min="1" value="${shelf.price}" />
       </label>
+      ${priceBadgeHtml(baseValue, shelf.price)}
       <div class="modal-actions">
         <button class="btn update-price-btn">Update Price</button>
         <button class="btn btn-secondary remove-card-btn">Remove to Bag</button>
@@ -417,7 +510,10 @@ function openShelfModal(shelfId: string) {
         compactCardRowHtml(
           c,
           idx,
-          `<input type="number" class="place-price-input" min="1" value="${c.baseValue}" />
+          `<div class="place-price-col">
+             <input type="number" class="place-price-input" min="1" value="${c.baseValue}" />
+             ${priceBadgeHtml(c.baseValue, c.baseValue)}
+           </div>
            <button class="btn btn-small place-btn" data-idx="${idx}">Place</button>`,
         ),
       )
@@ -432,9 +528,14 @@ function openShelfModal(shelfId: string) {
   `);
 
   if (shelf.card) {
+    const baseValue = shelf.card.baseValue;
+    const repriceInput = modalLayer.querySelector('#reprice-input') as HTMLInputElement;
+    const badge = modalLayer.querySelector('.price-badge') as HTMLElement;
+    repriceInput.addEventListener('input', () => {
+      updatePriceBadge(badge, baseValue, Number(repriceInput.value) || 0);
+    });
     modalLayer.querySelector('.update-price-btn')!.addEventListener('click', () => {
-      const input = modalLayer.querySelector('#reprice-input') as HTMLInputElement;
-      gameState.repriceShelf(shelfId, Number(input.value));
+      gameState.repriceShelf(shelfId, Number(repriceInput.value));
       closeModal();
     });
     modalLayer.querySelector('.remove-card-btn')!.addEventListener('click', () => {
@@ -442,6 +543,15 @@ function openShelfModal(shelfId: string) {
       closeModal();
     });
   } else {
+    modalLayer.querySelectorAll<HTMLElement>('.codex-row').forEach((row) => {
+      const idx = Number(row.dataset.idx);
+      const card = gameState.inventory[idx];
+      const priceInput = row.querySelector('.place-price-input') as HTMLInputElement;
+      const badge = row.querySelector('.price-badge') as HTMLElement;
+      priceInput.addEventListener('input', () => {
+        updatePriceBadge(badge, card.baseValue, Number(priceInput.value) || 0);
+      });
+    });
     modalLayer.querySelectorAll<HTMLButtonElement>('.place-btn').forEach((btn) => {
       btn.addEventListener('click', () => {
         const idx = Number(btn.dataset.idx);
@@ -556,18 +666,39 @@ function openZoneMapModal() {
 
 // --- NPC dialogue ---
 
-function openNpcModal(npcId: string) {
+interface GiftFeedback {
+  matchedRequest: boolean;
+  friendshipGain: number;
+  goldGain: number;
+}
+
+function openNpcModal(npcId: string, feedback?: GiftFeedback) {
   const def = NPCS.find((n) => n.id === npcId)!;
   const npcState = gameState.npcs[npcId];
   const tier = friendshipTier(npcState.friendship);
   const line = def.lines[tier][Math.floor(Math.random() * def.lines[tier].length)];
   const alreadyTalkedToday = npcState.lastTalkedDay === gameState.day;
+  const request = npcState.request;
+
+  const requestHtml = request
+    ? `<div class="npc-request">Wants a <strong>${RARITY_LABELS[request.rarity]}</strong> card from <strong>${SEASON_SET_NAME[request.season]}</strong> — gift one for a bonus!</div>`
+    : '';
+
+  const feedbackHtml = feedback
+    ? `<div class="gift-feedback${feedback.matchedRequest ? ' gift-feedback-match' : ''}">
+        ${feedback.matchedRequest ? '&#9733; Request fulfilled! ' : 'Thanks! '}
+        +${feedback.friendshipGain} friendship${feedback.goldGain > 0 ? ` &middot; +${feedback.goldGain}g` : ''}
+      </div>`
+    : '';
 
   const giftRows =
     gameState.inventory.length === 0
       ? `<p class="modal-sub">You have no cards in your bag to gift.</p>`
       : `<div class="codex-list">${gameState.inventory
-          .map((c, idx) => compactCardRowHtml(c, idx, `<button class="btn btn-small gift-btn" data-idx="${idx}">Gift</button>`))
+          .map((c, idx) => {
+            const matches = !!request && c.season === request.season && c.rarity === request.rarity;
+            return compactCardRowHtml(c, idx, `<button class="btn btn-small gift-btn" data-idx="${idx}">Gift</button>`, matches);
+          })
           .join('')}</div>`;
 
   renderModal(`
@@ -575,6 +706,8 @@ function openNpcModal(npcId: string) {
     <div class="npc-tier">${FRIENDSHIP_TIER_LABELS[tier]}</div>
     <div class="friend-bar"><div class="friend-bar-fill" style="width:${npcState.friendship}%"></div></div>
     <p class="npc-line">"${line}"</p>
+    ${requestHtml}
+    ${feedbackHtml}
     <div class="modal-actions">
       <button class="btn talk-btn" ${alreadyTalkedToday ? 'disabled' : ''}>${alreadyTalkedToday ? 'Already talked today' : 'Talk'}</button>
     </div>
@@ -592,8 +725,10 @@ function openNpcModal(npcId: string) {
     btn.addEventListener('click', () => {
       const idx = Number(btn.dataset.idx);
       const card = gameState.inventory[idx];
-      gameState.giftCardToNpc(npcId, card.id);
-      openNpcModal(npcId);
+      const result = gameState.giftCardToNpc(npcId, card.id);
+      if (result.matchedRequest) playLegendary();
+      else playChime();
+      openNpcModal(npcId, result);
     });
   });
   modalLayer.querySelector('.close-btn')!.addEventListener('click', closeModal);
@@ -769,7 +904,7 @@ function openLegacyModal() {
 
 function renderBagCount() {
   const el = document.getElementById('bag-count');
-  if (el) el.textContent = String(gameState.inventory.length);
+  if (el) el.textContent = `${gameState.inventory.length}/${gameState.bagCapacity}`;
 }
 
 function renderSeasonBadge() {
@@ -791,7 +926,7 @@ export function initUI() {
         <span class="energy-icon">&#9889;</span>
         <div class="energy-track"><div id="energy-fill" class="energy-fill${gameState.energy / gameState.maxEnergy < 0.25 ? ' energy-low' : ''}" style="width:${(gameState.energy / gameState.maxEnergy) * 100}%"></div></div>
       </div>
-      <button id="bag-btn" class="btn btn-small">&#127890; Bag (<span id="bag-count">${gameState.inventory.length}</span>)</button>
+      <button id="bag-btn" class="btn btn-small">&#127890; Bag (<span id="bag-count">${gameState.inventory.length}/${gameState.bagCapacity}</span>)</button>
       <button id="encyclopedia-btn" class="btn btn-small">&#128214; Cards</button>
       <button id="legacy-btn" class="btn btn-small">&#127942; Legacy</button>
       <button id="end-day-btn" class="btn btn-small">End Day</button>
@@ -827,6 +962,12 @@ export function initUI() {
       const pack = PACKS.find((p) => p.id === btn.dataset.pack);
       if (pack) btn.disabled = gold < effectivePackCost(pack);
     });
+    modalLayer.querySelectorAll<HTMLButtonElement>('.rush-pack-btn').forEach((btn) => {
+      const pack = PACKS.find((p) => p.id === btn.dataset.pack);
+      if (pack) btn.disabled = gold < rushCost(pack);
+    });
+    const tonicBtn = modalLayer.querySelector<HTMLButtonElement>('.buy-tonic-btn');
+    if (tonicBtn) tonicBtn.disabled = gold < ENERGY_TONIC_COST || gameState.energy >= gameState.maxEnergy;
     modalLayer.querySelectorAll<HTMLButtonElement>('.buy-upgrade-btn').forEach((btn) => {
       const def =
         SHOP_UPGRADE_DEFS.find((d) => d.key === btn.dataset.key) ??
@@ -852,6 +993,7 @@ export function initUI() {
     }
   });
   bus.on('inventory-changed', renderBagCount);
+  bus.on('shop-upgrades-changed', renderBagCount);
   bus.on('hp-changed', (hp: number) => {
     const el = document.getElementById('hp-value');
     if (el) el.textContent = String(Math.round(hp));

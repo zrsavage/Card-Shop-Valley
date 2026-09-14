@@ -36,6 +36,11 @@ export const SEASON_PRICE_MULTIPLIER: Record<Season, number> = {
   Winter: 1.5,
 };
 
+// A rare alternate-look version of any card, independent of rarity — a
+// shiny common is still a shiny. Worth a lot more, purely a lucky bonus.
+export const SHINY_CHANCE = 0.05;
+export const SHINY_VALUE_MULTIPLIER = 4;
+
 let cardCounter = 0;
 
 export function generateCard(rarity: Rarity, season: Season): Card {
@@ -43,6 +48,7 @@ export function generateCard(rarity: Rarity, season: Season): Card {
   const template = pool[Math.floor(Math.random() * pool.length)];
   const valueJitter = 0.85 + Math.random() * 0.3;
   const stageMultiplier = STAGE_VALUE_MULTIPLIER[template.stage - 1];
+  const shiny = Math.random() < SHINY_CHANCE;
   cardCounter += 1;
   return {
     id: `card-${Date.now()}-${cardCounter}`,
@@ -52,7 +58,10 @@ export function generateCard(rarity: Rarity, season: Season): Card {
     speciesId: template.speciesId,
     stage: template.stage,
     stageCount: template.stageCount,
-    baseValue: Math.round(RARITY_BASE_VALUE[rarity] * valueJitter * SEASON_PRICE_MULTIPLIER[season] * stageMultiplier),
+    baseValue: Math.round(
+      RARITY_BASE_VALUE[rarity] * valueJitter * SEASON_PRICE_MULTIPLIER[season] * stageMultiplier * (shiny ? SHINY_VALUE_MULTIPLIER : 1),
+    ),
     color: RARITY_COLORS[rarity],
+    shiny,
   };
 }

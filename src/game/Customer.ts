@@ -3,6 +3,8 @@ import { gameState } from './state';
 import { SHOP_DOOR_TRIGGER } from './layout';
 import { showFloatingText, showSpeechText } from './fx';
 import { humanoidTextureKey } from './pixelArt';
+import { PRICE_REACTION_TIERS, buyChanceFor } from './pricing';
+import { playCoin } from './audio';
 
 const CUSTOMER_DOOR_POS = { x: SHOP_DOOR_TRIGGER.x, y: 580 };
 const CUSTOMER_COLORS = [0x4cc9f0, 0xf72585, 0x90be6d, 0xf9844a, 0x9b5de5, 0x577590];
@@ -25,15 +27,20 @@ export interface ShelfTarget {
 
 // A reaction to the price tag itself, shown before the buy/no-buy roll —
 // customers comment on cost independently of whether they end up buying.
-const PRICE_REACTIONS: { max: number; lines: string[]; color: string }[] = [
-  { max: 0.7, lines: ['What a steal!', 'Amazing price!', "Can't beat this deal!"], color: '#2b8a3e' },
-  { max: 1.05, lines: ['Fair price.', 'Reasonable enough.', 'Seems about right.'], color: '#6d4c41' },
-  { max: 1.5, lines: ['A bit pricey...', 'Hmm, steep.', 'Bit much for this.'], color: '#c96b18' },
-  { max: Infinity, lines: ['Way too much!', "You're joking, right?", 'Not paying that.'], color: '#c92a2a' },
+// Thresholds/colors come from pricing.ts (shared with the shelf-price
+// preview); only the flavor lines live here.
+const REACTION_LINES: string[][] = [
+  ['What a steal!', 'Amazing price!', "Can't beat this deal!"],
+  ['Fair price.', 'Reasonable enough.', 'Seems about right.'],
+  ['A bit pricey...', 'Hmm, steep.', 'Bit much for this.'],
+  ['Way too much!', "You're joking, right?", 'Not paying that.'],
 ];
 
 function reactionFor(ratio: number) {
-  return PRICE_REACTIONS.find((r) => ratio <= r.max) ?? PRICE_REACTIONS[PRICE_REACTIONS.length - 1];
+  const idx = PRICE_REACTION_TIERS.findIndex((t) => ratio <= t.maxRatio);
+  const tier = PRICE_REACTION_TIERS[idx < 0 ? PRICE_REACTION_TIERS.length - 1 : idx];
+  const lines = REACTION_LINES[idx < 0 ? REACTION_LINES.length - 1 : idx];
+  return { lines, color: tier.colorHex };
 }
 
 function pick<T>(arr: T[]): T {
@@ -105,16 +112,14 @@ export function spawnCustomer(scene: Phaser.Scene, stockedShelves: ShelfTarget[]
     showSpeechText(scene, sprite.x, sprite.y - 20, pick(reaction.lines), reaction.color);
 
     scene.time.delayedCall(DECIDE_PAUSE_MS, () => {
-      // The Appraiser's Loupe upgrade makes customers more tolerant of markup.
-      const buyChance = gameState.shopUpgrades.appraisersLoupe
-        ? Phaser.Math.Clamp(1.5 - ratio * 0.65, 0.1, 0.97)
-        : Phaser.Math.Clamp(1.3 - ratio * 0.8, 0.05, 0.95);
+      const buyChance = buyChanceFor(ratio, gameState.shopUpgrades.appraisersLoupe);
       const willBuy = Math.random() < buyChance;
 
       if (willBuy) {
         const earned = gameState.sellFromShelf(target.id);
         boughtAnything = true;
         showFloatingText(scene, sprite.x, sprite.y - 42, `+${earned}g`, '#2b8a3e');
+        playCoin();
       }
       scene.time.delayedCall(NEXT_SHELF_PAUSE_MS, () => visit(i + 1));
     });

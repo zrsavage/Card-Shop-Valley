@@ -270,6 +270,15 @@ html, body {
 
 .pack-info {
   flex: 1;
+  min-width: 0;
+}
+
+.pack-actions-col {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+  flex-shrink: 0;
 }
 
 .pack-name {
@@ -306,6 +315,7 @@ html, body {
 /* One big card revealed at a time in a spotlight stage, instead of the
    whole pack appearing as a static grid — each pull gets its own moment. */
 .reveal-stage {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -771,4 +781,147 @@ html, body {
   color: #6d4c41;
   margin-top: 2px;
   font-variant-numeric: tabular-nums;
+}
+
+/* --- Price reaction preview (shelf stocking / repricing) --- */
+
+.price-badge {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 9px;
+  border-radius: 8px;
+  color: #fff8ec;
+  white-space: nowrap;
+}
+
+.price-tier-steal { background: #2b8a3e; }
+.price-tier-fair { background: #6d4c41; }
+.price-tier-pricey { background: #c96b18; }
+.price-tier-toomuch { background: #c92a2a; }
+
+.place-price-col {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}
+
+/* --- Shiny cards: a rare alt-look, independent of rarity --- */
+
+@keyframes shinyShimmer {
+  0% { background-position: -150% 0; }
+  100% { background-position: 250% 0; }
+}
+
+.card-chip-shiny {
+  position: relative;
+  overflow: hidden;
+  box-shadow: 0 3px 6px rgba(43, 29, 14, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.45), 0 0 12px 2px #fff3b0;
+}
+
+.card-chip-shiny::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 12px;
+  background: linear-gradient(120deg, transparent 30%, rgba(255, 255, 255, 0.75) 48%, rgba(255, 255, 255, 0.75) 52%, transparent 70%);
+  background-size: 250% 100%;
+  animation: shinyShimmer 2.4s linear infinite;
+  pointer-events: none;
+}
+
+.shiny-badge {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  background: linear-gradient(90deg, #ffd166, #fff3b0);
+  color: #2b1d0e;
+  font-size: 8px;
+  font-weight: 700;
+  padding: 1px 5px;
+  border-radius: 6px;
+  white-space: nowrap;
+  z-index: 1;
+}
+
+.shiny-tag {
+  color: #d9a92e;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .card-chip-shiny::after {
+    animation: none;
+  }
+}
+
+/* --- Bigger legendary/shiny reveal moment --- */
+
+@keyframes revealFlash {
+  0% { opacity: 0; }
+  15% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+.reveal-flash {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle, #fff8ec 0%, transparent 70%);
+  animation: revealFlash 0.6s ease-out both;
+  pointer-events: none;
+}
+
+.card-spotlight-big-moment {
+  animation:
+    cardSpotlightPop 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) both,
+    revealGlowPulse 1.3s ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reveal-flash,
+  .card-spotlight-big-moment {
+    animation: none;
+  }
+}
+
+/* --- NPC requests & gift feedback --- */
+
+.npc-request {
+  font-size: 12px;
+  font-weight: 500;
+  background: #fff3d6;
+  border: 2px solid #ffb703;
+  border-radius: 10px;
+  padding: 8px 10px;
+  margin: 0 0 10px;
+}
+
+.gift-feedback {
+  font-size: 13px;
+  font-weight: 700;
+  color: #2b8a3e;
+  background: #e3f2e1;
+  border: 2px solid #2b8a3e;
+  border-radius: 10px;
+  padding: 6px 10px;
+  margin: 0 0 10px;
+}
+
+.gift-feedback-match {
+  color: #9c4fd9;
+  background: #f6ecff;
+  border-color: #9c4fd9;
+}
+
+.codex-row-requested {
+  background: #fff3d6;
+  border-radius: 8px;
+  outline: 2px solid #ffb703;
+}
+
+.codex-request-tag {
+  font-size: 10px;
+  font-weight: 700;
+  color: #d98c00;
+  margin-top: 2px;
 }

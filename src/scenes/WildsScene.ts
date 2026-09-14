@@ -5,6 +5,7 @@ import { ZONE_DEFS, rollPackDrop, type EnemyDef, type ZoneDef } from '../game/co
 import { PACKS } from '../game/packs';
 import { WILDS_FROM_TOWN_POS, WILDS_TO_TOWN_TRIGGER } from '../game/layout';
 import { humanoidTextureKey, monsterTextureKey, attachCircleBody } from '../game/pixelArt';
+import { playHit, playPlayerHurt } from '../game/audio';
 
 const PLAYER_SPEED = 240;
 const MELEE_RANGE = 85;
@@ -42,19 +43,20 @@ export default class WildsScene extends Phaser.Scene {
 
   create() {
     this.zone = ZONE_DEFS.find((z) => z.id === gameState.currentZoneId) ?? ZONE_DEFS[0];
-    this.cameras.main.setBackgroundColor('#243318');
+    this.cameras.main.setBackgroundColor(this.zone.cameraBg);
     this.enemies = [];
     this.attackCooldownRemaining = 0;
     this.spawnTimer = 0;
     this.nextSpawnAt = 1500;
     this.lastDamageTime = 0;
 
-    // Wild terrain — a darker, mossier ground than the town square.
-    this.add.rectangle(400, 300, 760, 560, 0x3a5230).setDepth(0);
+    // Wild terrain — colored per zone so each one reads as a different
+    // place, not just a recolored enemy roster on the same ground.
+    this.add.rectangle(400, 300, 760, 560, this.zone.groundColor).setDepth(0);
     for (let i = 0; i < 14; i++) {
       const x = Phaser.Math.Between(50, 750);
       const y = Phaser.Math.Between(50, 550);
-      this.add.circle(x, y, Phaser.Math.Between(10, 22), 0x2f4526, 0.6).setDepth(0);
+      this.add.circle(x, y, Phaser.Math.Between(10, 22), this.zone.decorationColor, 0.6).setDepth(0);
     }
 
     this.add
@@ -172,6 +174,7 @@ export default class WildsScene extends Phaser.Scene {
 
   private damageEnemy(enemy: EnemyInstance, amount: number) {
     enemy.hp -= amount;
+    playHit();
     showFloatingText(this, enemy.sprite.x, enemy.sprite.y - enemy.def.radius - 6, `-${amount}`, '#fff3d6');
     if (enemy.hp <= 0) {
       this.killEnemy(enemy);
@@ -225,6 +228,7 @@ export default class WildsScene extends Phaser.Scene {
         this.lastDamageTime = time;
         const damage = gameState.isExhausted ? Math.round(enemy.def.damage * EXHAUSTED_DAMAGE_TAKEN_MULTIPLIER) : enemy.def.damage;
         const dead = gameState.takeDamage(damage);
+        playPlayerHurt();
         showFloatingText(this, this.player.x, this.player.y - 24, `-${damage}`, '#ff6b6b');
         if (dead) {
           this.handlePlayerDown();

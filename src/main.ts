@@ -5,9 +5,16 @@ import TownScene from './scenes/TownScene';
 import WildsScene from './scenes/WildsScene';
 import { initUI } from './ui/ui';
 import { loadGame, initAutosave } from './game/save';
+import { gameState, bus } from './game/state';
 
 loadGame();
 initAutosave();
+
+// Dev-only test hook — dead-code-eliminated from production builds since
+// import.meta.env.DEV is statically replaced with `false` by Vite.
+if (import.meta.env.DEV) {
+  (window as unknown as { __debug: { gameState: typeof gameState; bus: typeof bus } }).__debug = { gameState, bus };
+}
 
 const config: Phaser.Types.Core.GameConfig = {
   type: Phaser.AUTO,

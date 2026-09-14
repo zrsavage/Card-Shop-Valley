@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import type { Card, ShelfSlot, Season, ShopUpgrades, TownUpgrades, CombatUpgrades, NpcState } from './types';
+import type { Card, ShelfSlot, Season, ShopUpgrades, TownUpgrades, CombatUpgrades, NpcState, CardRequest, Rarity } from './types';
 import { SHOP_SHELF_POSITIONS } from './layout';
 import { NPCS } from './npcs';
 
@@ -25,6 +25,32 @@ export const EXHAUSTED_ATTACK_DAMAGE = 1;
 export const EXHAUSTED_SPEED_MULTIPLIER = 0.4;
 export const EXHAUSTED_DAMAGE_TAKEN_MULTIPLIER = 1.6;
 
+export const BAG_BASE_CAPACITY = 12;
+export const BAG_TIER_CAPACITY_BONUS = 8;
+
+export const ENERGY_TONIC_COST = 30;
+export const ENERGY_TONIC_RESTORE = 40;
+
+// Requests skew toward the lower rarities so they're a real, reachable
+// target most of the time rather than a demand to farm a legendary.
+const REQUEST_RARITY_WEIGHTS: Record<Rarity, number> = { common: 40, uncommon: 30, rare: 20, epic: 8, legendary: 2 };
+
+function rollNpcRequest(): CardRequest {
+  const season = SEASONS[Math.floor(Math.random() * SEASONS.length)];
+  const entries = Object.entries(REQUEST_RARITY_WEIGHTS) as [Rarity, number][];
+  const total = entries.reduce((sum, [, w]) => sum + w, 0);
+  let roll = Math.random() * total;
+  let rarity: Rarity = 'common';
+  for (const [r, w] of entries) {
+    if (roll < w) {
+      rarity = r;
+      break;
+    }
+    roll -= w;
+  }
+  return { season, rarity };
+}
+
 export interface DaySummary {
   day: number;
   season: Season;
@@ -39,6 +65,8 @@ function defaultShopUpgrades(): ShopUpgrades {
     extraShelvesTier2: false,
     marketingSign: false,
     appraisersLoupe: false,
+    bagTier1: false,
+    bagTier2: false,
   };
 }
 
@@ -63,7 +91,7 @@ function defaultCombatUpgrades(): CombatUpgrades {
 function defaultNpcStates(): Record<string, NpcState> {
   const record: Record<string, NpcState> = {};
   for (const npc of NPCS) {
-    record[npc.id] = { friendship: 0, lastTalkedDay: 0 };
+    record[npc.id] = { friendship: 0, lastTalkedDay: 0, request: rollNpcRequest() };
   }
   return record;
 }
@@ -140,6 +168,15 @@ class GameState {
 
   get isExhausted(): boolean {
     return this.energy <= 0;
+  }
+
+  get bagCapacity(): number {
+    const tiers = [this.shopUpgrades.bagTier1, this.shopUpgrades.bagTier2].filter(Boolean).length;
+    return BAG_BASE_CAPACITY + tiers * BAG_TIER_CAPACITY_BONUS;
+  }
+
+  hasBagSpace(count: number): boolean {
+    return this.inventory.length + count <= this.bagCapacity;
   }
 
   addGold(amount: number) {
@@ -275,14 +312,22 @@ class GameState {
     return { alreadyTalkedToday: false, gain };
   }
 
-  giftCardToNpc(npcId: string, cardId: string): number {
+  giftCardToNpc(npcId: string, cardId: string): { friendshipGain: number; goldGain: number; matchedRequest: boolean } {
     const card = this.removeFromInventory(cardId);
-    if (!card) return 0;
-    const gain = Math.max(2, Math.round(card.baseValue / 4));
+    if (!card) return { friendshipGain: 0, goldGain: 0, matchedRequest: false };
     const npc = this.npcs[npcId];
-    npc.friendship = Math.min(100, npc.friendship + gain);
+    const matchedRequest = !!npc.request && npc.request.season === card.season && npc.request.rarity === card.rarity;
+
+    const friendshipGain = matchedRequest ? Math.max(8, Math.round(card.baseValue / 4) * 3) : Math.max(2, Math.round(card.baseValue / 4));
+    const goldGain = matchedRequest ? card.baseValue * 2 : 0;
+
+    npc.friendship = Math.min(100, npc.friendship + friendshipGain);
+    if (matchedRequest) {
+      this.addGold(goldGain);
+      npc.request = rollNpcRequest();
+    }
     bus.emit('npc-changed', npcId);
-    return gain;
+    return { friendshipGain, goldGain, matchedRequest };
   }
 
   /** Returns true if this brought the player to 0 HP. */
@@ -329,6 +374,25 @@ class GameState {
     if (!this.spendGold(cost)) return false;
     this.pendingPacks.push(packId);
     bus.emit('packs-changed', this.ownedPacks);
+    return true;
+  }
+
+  /** Pay a premium to skip the overnight wait and get the pack right now. */
+  buyPackRush(packId: string, cost: number): boolean {
+    if (!this.spendGold(cost)) return false;
+    this.ownedPacks.push(packId);
+    bus.emit('packs-changed', this.ownedPacks);
+    return true;
+  }
+
+  restoreEnergy(amount: number) {
+    this.energy = Math.min(this.maxEnergy, this.energy + amount);
+    bus.emit('energy-changed', this.energy);
+  }
+
+  buyEnergyTonic(cost: number, restoreAmount: number): boolean {
+    if (!this.spendGold(cost)) return false;
+    this.restoreEnergy(restoreAmount);
     return true;
   }
 
