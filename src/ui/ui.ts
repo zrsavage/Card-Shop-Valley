@@ -833,31 +833,31 @@ function decorRowHtml(item: DecorDef): string {
   `;
 }
 
-function openCustomizeModal() {
-  renderModal(`
-    <h2>Customize</h2>
+function customizeTabHtml(): string {
+  return `
     <p class="modal-sub">Spend gold on how you look and how your shop feels — pure style, no gameplay effect.</p>
     <h2 class="modal-section-title">Outfits</h2>
     <div class="pack-list">${OUTFITS.map(outfitRowHtml).join('')}</div>
     <h2 class="modal-section-title">Shop Decorations</h2>
     <div class="pack-list">${DECOR_ITEMS.map(decorRowHtml).join('')}</div>
-    <button class="btn btn-secondary close-btn">Close</button>
-  `);
+  `;
+}
 
+function wireCustomizeTab() {
   modalLayer.querySelectorAll<HTMLButtonElement>('.buy-outfit-btn').forEach((btn) => {
     btn.addEventListener('click', () => {
       const outfit = OUTFITS.find((o) => o.id === btn.dataset.id)!;
       if (!gameState.purchaseOutfit(outfit.id, outfit.cost)) return;
       gameState.equipOutfit(outfit.id);
       playCoin();
-      openCustomizeModal();
+      openMenuModal('customize');
     });
   });
   modalLayer.querySelectorAll<HTMLButtonElement>('.equip-outfit-btn').forEach((btn) => {
     btn.addEventListener('click', () => {
       gameState.equipOutfit(btn.dataset.id!);
       playChime();
-      openCustomizeModal();
+      openMenuModal('customize');
     });
   });
   modalLayer.querySelectorAll<HTMLButtonElement>('.buy-decor-btn').forEach((btn) => {
@@ -865,10 +865,9 @@ function openCustomizeModal() {
       const item = DECOR_ITEMS.find((d) => d.id === btn.dataset.id)!;
       if (!gameState.purchaseDecor(item.id, item.cost)) return;
       playCoin();
-      openCustomizeModal();
+      openMenuModal('customize');
     });
   });
-  modalLayer.querySelector('.close-btn')!.addEventListener('click', closeModal);
 }
 
 // --- NPC dialogue ---
@@ -944,19 +943,16 @@ function openNpcModal(npcId: string, feedback?: GiftFeedback) {
 // --- Bag (opened on demand only — it used to sit permanently docked
 // across the bottom of the screen, covering the play area) ---
 
-function openBagModal() {
+function bagTabHtml(): string {
   const body =
     gameState.inventory.length === 0
       ? `<p class="modal-sub">Your bag is empty. Buy or find a pack to fill it up.</p>`
       : `<div class="reveal-grid">${gameState.inventory.map((c) => cardSlotHtml(c)).join('')}</div>`;
 
-  renderModal(`
-    <h2>Bag</h2>
-    <p class="modal-sub">${gameState.inventory.length} card${gameState.inventory.length === 1 ? '' : 's'} on hand. Place them on a shelf, gift one to a townsfolk, or just browse.</p>
+  return `
+    <p class="modal-sub">${gameState.inventory.length}/${gameState.bagCapacity} cards on hand. Place them on a shelf, gift one to a townsfolk, or just browse.</p>
     ${body}
-    <button class="btn btn-secondary close-btn">Close</button>
-  `);
-  modalLayer.querySelector('.close-btn')!.addEventListener('click', closeModal);
+  `;
 }
 
 // --- Encyclopedia (every card: name, rarity, rough price, art) ---
@@ -1037,7 +1033,7 @@ function seasonDiscoveryCount(season: Season): { discovered: number; total: numb
   return { discovered, total };
 }
 
-function openEncyclopediaModal() {
+function cardsTabHtml(): string {
   const tabs = SEASONS.map(
     (season) =>
       `<button class="btn btn-small codex-tab-btn${season === encyclopediaSeason ? ' codex-tab-active' : ''}" data-season="${season}">${season}</button>`,
@@ -1049,8 +1045,7 @@ function openEncyclopediaModal() {
     : '';
   const overallBonusPct = Math.round((gameState.saleGoldMultiplier - 1) * 100);
 
-  renderModal(`
-    <h2>Card Encyclopedia</h2>
+  return `
     <p class="modal-sub">Discovered <strong>${discovered}/${total}</strong> in ${SEASON_SET_NAME[encyclopediaSeason]}. Undiscovered cards show as "???" until you pull one — prices are rough estimates once found.
     ${overallBonusPct > 0 ? `<br>Current sale-price bonus from completed sets and perks: <strong>+${overallBonusPct}%</strong>.` : ''}
     </p>
@@ -1058,13 +1053,14 @@ function openEncyclopediaModal() {
     <div class="codex-tabs">${tabs}</div>
     <input type="text" id="codex-search" class="codex-search" placeholder="Search by name..." value="${encyclopediaQuery}" />
     <div class="codex-list" id="codex-list">${encyclopediaBodyHtml()}</div>
-    <button class="btn btn-secondary close-btn">Close</button>
-  `);
+  `;
+}
 
+function wireCardsTab() {
   modalLayer.querySelectorAll<HTMLButtonElement>('.codex-tab-btn').forEach((btn) => {
     btn.addEventListener('click', () => {
       encyclopediaSeason = btn.dataset.season as Season;
-      openEncyclopediaModal();
+      openMenuModal('cards');
     });
   });
   const searchInput = modalLayer.querySelector('#codex-search') as HTMLInputElement;
@@ -1074,7 +1070,6 @@ function openEncyclopediaModal() {
     list.innerHTML = encyclopediaBodyHtml();
   });
   searchInput.focus();
-  modalLayer.querySelector('.close-btn')!.addEventListener('click', closeModal);
 }
 
 // --- Legacy (the long-run goal beyond "more gold") ---
@@ -1140,13 +1135,13 @@ function openPrestigeChoiceModal() {
     btn.addEventListener('click', () => {
       if (!gameState.prestige(btn.dataset.id!)) return;
       playLegendary();
-      closeModal();
+      openMenuModal('legacy');
     });
   });
-  modalLayer.querySelector('.close-btn')!.addEventListener('click', openLegacyModal);
+  modalLayer.querySelector('.close-btn')!.addEventListener('click', () => openMenuModal('legacy'));
 }
 
-function openLegacyModal() {
+function legacyTabHtml(): string {
   const doneCount = LEGACY_MILESTONES.filter((m) => m.check()).length;
   const capstoneDone = LEGACY_CAPSTONE.check();
   const prestigeSection = capstoneDone
@@ -1157,8 +1152,7 @@ function openLegacyModal() {
       <button class="btn prestige-btn">Begin Anew</button>
     `
     : '';
-  renderModal(`
-    <h2>Valley Legacy</h2>
+  return `
     <p class="modal-sub">
       ${capstoneDone ? "You've become a legend of this valley." : `${doneCount}/${LEGACY_MILESTONES.length} milestones complete. Gold is just the fuel — this is what it's for.`}
     </p>
@@ -1166,17 +1160,98 @@ function openLegacyModal() {
     <h2 class="modal-section-title">Capstone</h2>
     <div class="legacy-list">${legacyRowHtml(LEGACY_CAPSTONE, true)}</div>
     ${prestigeSection}
+  `;
+}
+
+function wireLegacyTab() {
+  modalLayer.querySelector('.prestige-btn')?.addEventListener('click', openPrestigeChoiceModal);
+}
+
+// --- Day (part of the Menu — ends the day in place of the old standalone button) ---
+
+function dayTabHtml(): string {
+  const pendingLine =
+    gameState.pendingPacks.length > 0
+      ? ` ${gameState.pendingPacks.length} pending pack${gameState.pendingPacks.length === 1 ? '' : 's'} will arrive.`
+      : '';
+  return `
+    <p class="modal-sub">
+      Day ${gameState.day} &middot; ${SEASON_SET_NAME[gameState.season]}
+      &middot; ${gameState.daysLeftInSeason} day${gameState.daysLeftInSeason === 1 ? '' : 's'} left before this set rotates out.
+    </p>
+    <p class="modal-sub">Energy: ${Math.round(gameState.energy)}/${gameState.maxEnergy}. Ending the day fully restores it.${pendingLine}</p>
+    <button class="btn end-day-btn">End Day</button>
+  `;
+}
+
+function wireDayTab() {
+  modalLayer.querySelector('.end-day-btn')!.addEventListener('click', () => {
+    gameState.endDay();
+  });
+}
+
+// --- Menu (tabbed: Bag / Cards / Legacy / Customize / Day) ---
+
+type MenuTab = 'bag' | 'cards' | 'legacy' | 'customize' | 'day';
+
+const MENU_TABS: { id: MenuTab; label: string }[] = [
+  { id: 'bag', label: '&#127890; Bag' },
+  { id: 'cards', label: '&#128214; Cards' },
+  { id: 'legacy', label: '&#127942; Legacy' },
+  { id: 'customize', label: '&#127912; Customize' },
+  { id: 'day', label: '&#9203; Day' },
+];
+
+let activeMenuTab: MenuTab = 'bag';
+
+function openMenuModal(tab: MenuTab = activeMenuTab) {
+  activeMenuTab = tab;
+  const tabBar = MENU_TABS.map(
+    (t) => `<button class="btn btn-small menu-tab-btn${t.id === tab ? ' menu-tab-active' : ''}" data-tab="${t.id}">${t.label}</button>`,
+  ).join('');
+  const content =
+    tab === 'bag'
+      ? bagTabHtml()
+      : tab === 'cards'
+        ? cardsTabHtml()
+        : tab === 'legacy'
+          ? legacyTabHtml()
+          : tab === 'customize'
+            ? customizeTabHtml()
+            : dayTabHtml();
+
+  renderModal(`
+    <h2>Menu</h2>
+    <div class="menu-tabs">${tabBar}</div>
+    <div id="menu-content">${content}</div>
     <button class="btn btn-secondary close-btn">Close</button>
   `);
-  modalLayer.querySelector('.prestige-btn')?.addEventListener('click', openPrestigeChoiceModal);
+
+  modalLayer.querySelectorAll<HTMLButtonElement>('.menu-tab-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const nextTab = btn.dataset.tab as MenuTab;
+      // Always land on the current season rather than wherever the
+      // Encyclopedia was last left browsing.
+      if (nextTab === 'cards') encyclopediaSeason = gameState.season;
+      openMenuModal(nextTab);
+    });
+  });
+  if (tab === 'cards') wireCardsTab();
+  else if (tab === 'legacy') wireLegacyTab();
+  else if (tab === 'customize') wireCustomizeTab();
+  else if (tab === 'day') wireDayTab();
+
   modalLayer.querySelector('.close-btn')!.addEventListener('click', closeModal);
 }
 
 // --- HUD ---
 
 function renderBagCount() {
-  const el = document.getElementById('bag-count');
-  if (el) el.textContent = `${gameState.inventory.length}/${gameState.bagCapacity}`;
+  // The bag count no longer lives on the HUD itself — only refresh the
+  // Bag tab's own content, and only when it's the one actually on screen.
+  if (activeMenuTab === 'bag' && modalLayer.querySelector('.menu-tabs')) {
+    openMenuModal('bag');
+  }
 }
 
 function renderSeasonBadge() {
@@ -1201,26 +1276,13 @@ export function initUI() {
         <span class="energy-icon">&#9889;</span>
         <div class="energy-track"><div id="energy-fill" class="energy-fill${gameState.energy / gameState.maxEnergy < 0.25 ? ' energy-low' : ''}" style="width:${(gameState.energy / gameState.maxEnergy) * 100}%"></div></div>
       </div>
-      <button id="bag-btn" class="btn btn-small">&#127890; Bag (<span id="bag-count">${gameState.inventory.length}/${gameState.bagCapacity}</span>)</button>
-      <button id="encyclopedia-btn" class="btn btn-small">&#128214; Cards</button>
-      <button id="legacy-btn" class="btn btn-small">&#127942; Legacy</button>
-      <button id="customize-btn" class="btn btn-small">&#127912; Customize</button>
-      <button id="end-day-btn" class="btn btn-small">End Day</button>
+      <button id="menu-btn" class="btn btn-small">&#9776; Menu</button>
     </div>
     <div id="modal-layer"></div>
   `;
   modalLayer = root.querySelector('#modal-layer') as HTMLDivElement;
 
-  document.getElementById('end-day-btn')!.addEventListener('click', () => {
-    gameState.endDay();
-  });
-  document.getElementById('bag-btn')!.addEventListener('click', openBagModal);
-  document.getElementById('encyclopedia-btn')!.addEventListener('click', () => {
-    encyclopediaSeason = gameState.season;
-    openEncyclopediaModal();
-  });
-  document.getElementById('legacy-btn')!.addEventListener('click', openLegacyModal);
-  document.getElementById('customize-btn')!.addEventListener('click', openCustomizeModal);
+  document.getElementById('menu-btn')!.addEventListener('click', () => openMenuModal());
 
   renderSeasonBadge();
 

@@ -1000,3 +1000,17 @@ html, body {
   outline: 2px solid #2b8a3e;
   background: #e3f2e1;
 }
+
+/* --- Menu (Bag / Cards / Legacy / Customize / Day tabs) --- */
+
+.menu-tabs {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 14px;
+  flex-wrap: wrap;
+}
+
+.menu-tab-btn.menu-tab-active {
+  background: #2b1d0e;
+  color: #fff8ec;
+}
