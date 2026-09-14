@@ -73,3 +73,14 @@ export function playChime() {
 export function playError() {
   beep(160, 0.14, 'sawtooth', 0.07);
 }
+
+// Quiet, low-pitched footfalls — a small random pitch wobble so a walking
+// cadence doesn't sound like the exact same beep on a loop.
+export function playFootstep() {
+  beep(85 + Math.random() * 20, 0.05, 'sine', 0.035);
+}
+
+/** Same footstep, much quieter — for customers/NPCs walking in the background. */
+export function playFootstepFaint() {
+  beep(80 + Math.random() * 20, 0.045, 'sine', 0.014);
+}

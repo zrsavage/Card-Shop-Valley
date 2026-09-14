@@ -1,4 +1,4 @@
-import { gameState, bus, WEAPON_TIER_DAMAGE_BONUS, VITALITY_TIER_HP_BONUS, SPEED_TIER_BONUS, SEASONS, ENERGY_TONIC_COST, ENERGY_TONIC_RESTORE, BAG_TIER_CAPACITY_BONUS, type DaySummary } from '../game/state';
+import { gameState, bus, WEAPON_TIER_DAMAGE_BONUS, VITALITY_TIER_HP_BONUS, SPEED_TIER_BONUS, SEASONS, ENERGY_TONIC_COST, ENERGY_TONIC_RESTORE, type DaySummary } from '../game/state';
 import { PACKS, openPack, type PackDefinition } from '../game/packs';
 import { RARITIES, RARITY_LABELS, RARITY_BASE_VALUE, SEASON_PRICE_MULTIPLIER } from '../game/cards';
 import { NPCS, friendshipTier, FRIENDSHIP_TIER_LABELS } from '../game/npcs';
@@ -120,14 +120,10 @@ const SHOP_UPGRADE_DEFS: ShopUpgradeDef[] = [
   },
   { key: 'marketingSign', name: 'Marketing Sign', cost: 200, description: 'Customers visit the shop more often.' },
   { key: 'appraisersLoupe', name: "Appraiser's Loupe", cost: 400, description: 'Customers tolerate higher markups.' },
-  { key: 'bagTier1', name: 'Bigger Bag I', cost: 250, description: `+${BAG_TIER_CAPACITY_BONUS} bag capacity.` },
-  {
-    key: 'bagTier2',
-    name: 'Bigger Bag II',
-    cost: 650,
-    description: `+${BAG_TIER_CAPACITY_BONUS} more bag capacity.`,
-    requiresKey: 'bagTier1',
-  },
+  // Bag-capacity upgrades (bagTier1/bagTier2) are intentionally not sold —
+  // the bag no longer limits how many cards you can hold. The upgrades and
+  // gameState.bagCapacity still exist for whatever non-card items show up
+  // later; they're just not worth gold to buy while nothing uses them yet.
 ];
 
 interface TownUpgradeDef {
@@ -247,10 +243,12 @@ function packCountRows(packIds: string[], ready: boolean): string {
     .map(([id, count]) => {
       const pack = PACKS.find((p) => p.id === id);
       if (!pack) return '';
-      const canOpen = gameState.hasBagSpace(pack.cardCount);
       const actions = ready
-        ? `<button class="btn open-owned-pack-btn" data-pack="${id}" ${canOpen ? '' : 'disabled'} title="${canOpen ? '' : 'Bag is full — make room first'}">Open</button>
-           <button class="btn btn-secondary sell-owned-pack-btn" data-pack="${id}">Sell ${pack.sellValue}g</button>`
+        ? `<div class="pack-actions-col">
+             <button class="btn btn-small open-owned-pack-btn" data-pack="${id}">Open</button>
+             ${count > 1 ? `<button class="btn btn-small btn-secondary open-all-owned-btn" data-pack="${id}">Open All &times;${count}</button>` : ''}
+             <button class="btn btn-small btn-secondary sell-owned-pack-btn" data-pack="${id}">Sell ${pack.sellValue}g</button>
+           </div>`
         : `<span class="pack-pending-tag">Arrives tomorrow</span>`;
       return `
         <div class="pack-row${ready ? '' : ' pack-row-pending'}">
@@ -368,15 +366,17 @@ function openCounterModal() {
     btn.addEventListener('click', () => {
       const packId = btn.dataset.pack!;
       const pack = PACKS.find((p) => p.id === packId) as PackDefinition;
-      if (!gameState.hasBagSpace(pack.cardCount)) {
-        playError();
-        return;
-      }
       if (!gameState.consumeOwnedPack(packId)) return;
       gameState.notePackOpened();
       const forceShinyOnce = gameState.consumeShinyCharm();
       const cards = openPack(pack, gameState.season, { forceShinyOnce });
       openPackRevealModal(pack, cards);
+    });
+  });
+  modalLayer.querySelectorAll<HTMLButtonElement>('.open-all-owned-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const pack = PACKS.find((p) => p.id === btn.dataset.pack) as PackDefinition;
+      bulkOpenAndReveal(pack);
     });
   });
   modalLayer.querySelectorAll<HTMLButtonElement>('.sell-owned-pack-btn').forEach((btn) => {
@@ -412,6 +412,20 @@ const REVEAL_GLOW_COLOR: Record<Rarity, string> = {
   legendary: '#d93e3e',
 };
 
+/** Opens every remaining owned copy of a pack at once and feeds all their
+ * cards into one combined reveal, instead of making the player click
+ * "Open" over and over. */
+function bulkOpenAndReveal(pack: PackDefinition) {
+  const allCards: Card[] = [];
+  while (gameState.consumeOwnedPack(pack.id)) {
+    gameState.notePackOpened();
+    const forceShinyOnce = gameState.consumeShinyCharm();
+    allCards.push(...openPack(pack, gameState.season, { forceShinyOnce }));
+  }
+  if (allCards.length === 0) return;
+  openPackRevealModal(pack, allCards);
+}
+
 function openPackRevealModal(pack: PackDefinition, cards: Card[]) {
   const season = cards[0]?.season ?? gameState.season;
   // Reveal worst-to-best — classic pack-opening suspense, saving the best
@@ -425,10 +439,9 @@ function openPackRevealModal(pack: PackDefinition, cards: Card[]) {
     <div class="reveal-progress" id="reveal-progress">
       ${order.map(() => `<div class="reveal-pip"></div>`).join('')}
     </div>
-    <div class="reveal-grid" id="reveal-grid" hidden></div>
-    <div class="modal-actions">
+    <div class="reveal-grid reveal-grid-small" id="reveal-grid" hidden></div>
+    <div class="modal-actions" id="reveal-actions">
       <button class="btn btn-secondary skip-reveal-btn">Skip &raquo;</button>
-      <button class="btn collect-btn" hidden>Collect Cards</button>
     </div>
   `);
 
@@ -437,7 +450,7 @@ function openPackRevealModal(pack: PackDefinition, cards: Card[]) {
   const pips = progress.querySelectorAll<HTMLDivElement>('.reveal-pip');
   const grid = modalLayer.querySelector('#reveal-grid') as HTMLDivElement;
   const skipBtn = modalLayer.querySelector('.skip-reveal-btn') as HTMLButtonElement;
-  const collectBtn = modalLayer.querySelector('.collect-btn') as HTMLButtonElement;
+  const actionsBox = modalLayer.querySelector('#reveal-actions') as HTMLDivElement;
 
   let idx = 0;
   let timer: ReturnType<typeof setTimeout> | null = null;
@@ -475,10 +488,32 @@ function openPackRevealModal(pack: PackDefinition, cards: Card[]) {
     timer = null;
     stage.hidden = true;
     progress.hidden = true;
-    skipBtn.hidden = true;
     grid.hidden = false;
-    grid.innerHTML = order.map((c) => cardSlotHtml(c)).join('');
-    collectBtn.hidden = false;
+    // Small chips here so a big haul (especially after "Open All") is all
+    // visible at once instead of needing to scroll through full-size cards.
+    grid.innerHTML = order.map((c) => cardSlotHtml(c, true)).join('');
+
+    const remaining = gameState.ownedPacks.filter((id) => id === pack.id).length;
+    if (remaining > 0) {
+      actionsBox.innerHTML = `
+        <button class="btn open-all-remaining-btn">Open All Remaining (${remaining})</button>
+        <button class="btn btn-secondary collect-stop-btn">Collect &amp; Stop</button>
+      `;
+      actionsBox.querySelector('.open-all-remaining-btn')!.addEventListener('click', () => {
+        gameState.addCardsToInventory(cards);
+        bulkOpenAndReveal(pack);
+      });
+      actionsBox.querySelector('.collect-stop-btn')!.addEventListener('click', () => {
+        gameState.addCardsToInventory(cards);
+        openCounterModal();
+      });
+    } else {
+      actionsBox.innerHTML = `<button class="btn collect-btn">Collect Cards</button>`;
+      actionsBox.querySelector('.collect-btn')!.addEventListener('click', () => {
+        gameState.addCardsToInventory(cards);
+        openCounterModal();
+      });
+    }
   }
 
   function revealNext() {
@@ -494,11 +529,6 @@ function openPackRevealModal(pack: PackDefinition, cards: Card[]) {
   skipBtn.addEventListener('click', () => {
     if (timer) clearTimeout(timer);
     finish();
-  });
-
-  collectBtn.addEventListener('click', () => {
-    gameState.addCardsToInventory(cards);
-    closeModal();
   });
 
   playPackOpen();
@@ -950,7 +980,7 @@ function bagTabHtml(): string {
       : `<div class="reveal-grid">${gameState.inventory.map((c) => cardSlotHtml(c)).join('')}</div>`;
 
   return `
-    <p class="modal-sub">${gameState.inventory.length}/${gameState.bagCapacity} cards on hand. Place them on a shelf, gift one to a townsfolk, or just browse.</p>
+    <p class="modal-sub">${gameState.inventory.length} card${gameState.inventory.length === 1 ? '' : 's'} on hand. Place them on a shelf, gift one to a townsfolk, or just browse.</p>
     ${body}
   `;
 }

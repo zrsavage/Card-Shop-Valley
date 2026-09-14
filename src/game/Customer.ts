@@ -4,7 +4,7 @@ import { SHOP_DOOR_TRIGGER } from './layout';
 import { showFloatingText, showSpeechText } from './fx';
 import { humanoidTextureKey } from './pixelArt';
 import { PRICE_REACTION_TIERS, buyChanceFor } from './pricing';
-import { playCoin } from './audio';
+import { playCoin, playFootstepFaint } from './audio';
 
 const CUSTOMER_DOOR_POS = { x: SHOP_DOOR_TRIGGER.x, y: 580 };
 const CUSTOMER_COLORS = [0x4cc9f0, 0xf72585, 0x90be6d, 0xf9844a, 0x9b5de5, 0x577590];
@@ -18,6 +18,7 @@ const LOOK_PAUSE_MS = 1600;
 const DECIDE_PAUSE_MS = 1500;
 const NEXT_SHELF_PAUSE_MS = 500;
 const LEAVE_PAUSE_MS = 900;
+const CUSTOMER_STEP_INTERVAL_MS = 320;
 
 export interface ShelfTarget {
   id: string;
@@ -57,14 +58,26 @@ function rollVisitCount(): number {
 
 function tweenTo(scene: Phaser.Scene, target: Phaser.GameObjects.Sprite, x: number, y: number, onDone: () => void) {
   const dist = Phaser.Math.Distance.Between(target.x, target.y, x, y);
-  const duration = (dist / WALK_SPEED) * 1000;
+  const duration = Math.max(200, (dist / WALK_SPEED) * 1000);
+  // A faint, periodic step sound while actually walking somewhere — skipped
+  // for near-zero-distance "moves". Cleaned up on the sprite's own destroy
+  // event too, since a customer can be force-removed (day ending) mid-walk,
+  // which stops the tween without necessarily firing its onComplete.
+  let stepEvent: Phaser.Time.TimerEvent | null = null;
+  if (dist > 4) {
+    stepEvent = scene.time.addEvent({ delay: CUSTOMER_STEP_INTERVAL_MS, loop: true, callback: playFootstepFaint });
+    target.once(Phaser.GameObjects.Events.DESTROY, () => stepEvent?.remove());
+  }
   scene.tweens.add({
     targets: target,
     x,
     y,
-    duration: Math.max(200, duration),
+    duration,
     ease: 'Sine.inOut',
-    onComplete: onDone,
+    onComplete: () => {
+      stepEvent?.remove();
+      onDone();
+    },
   });
 }
 

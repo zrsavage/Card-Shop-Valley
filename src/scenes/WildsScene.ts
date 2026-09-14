@@ -5,9 +5,10 @@ import { ZONE_DEFS, rollPackDrop, BOSS_KILL_THRESHOLD, type EnemyDef, type ZoneD
 import { PACKS } from '../game/packs';
 import { WILDS_FROM_TOWN_POS, WILDS_TO_TOWN_TRIGGER } from '../game/layout';
 import { humanoidTextureKey, monsterTextureKey, attachCircleBody } from '../game/pixelArt';
-import { playHit, playPlayerHurt, playLegendary } from '../game/audio';
+import { playHit, playPlayerHurt, playLegendary, playFootstep } from '../game/audio';
 
 const MELEE_RANGE = 85;
+const STEP_INTERVAL_MS = 300;
 const ATTACK_COOLDOWN_MS = 400;
 const CONTACT_DAMAGE_COOLDOWN_MS = 900;
 const HP_REGEN_DELAY_MS = 3000;
@@ -40,6 +41,7 @@ export default class WildsScene extends Phaser.Scene {
   private zone!: ZoneDef;
   private killCount = 0;
   private bossSpawned = false;
+  private stepTimer = 0;
 
   constructor() {
     super('Wilds');
@@ -55,6 +57,7 @@ export default class WildsScene extends Phaser.Scene {
     this.lastDamageTime = 0;
     this.killCount = 0;
     this.bossSpawned = false;
+    this.stepTimer = 0;
 
     // Wild terrain — colored per zone so each one reads as a different
     // place, not just a recolored enemy roster on the same ground.
@@ -126,7 +129,8 @@ export default class WildsScene extends Phaser.Scene {
     }
     if (this.attackCooldownRemaining > 0) this.attackCooldownRemaining -= delta;
 
-    this.handleMovement();
+    const moving = this.handleMovement();
+    this.tickFootsteps(moving, delta);
     this.handleAttack();
     this.handleReturnTrigger();
     this.updateEnemies(time, delta);
@@ -141,7 +145,7 @@ export default class WildsScene extends Phaser.Scene {
     }
   }
 
-  private handleMovement() {
+  private handleMovement(): boolean {
     const body = this.player.body as Phaser.Physics.Arcade.Body;
     let vx = 0;
     let vy = 0;
@@ -150,9 +154,23 @@ export default class WildsScene extends Phaser.Scene {
     if (this.cursors.up?.isDown || this.wasd.up.isDown) vy -= 1;
     if (this.cursors.down?.isDown || this.wasd.down.isDown) vy += 1;
     const vec = new Phaser.Math.Vector2(vx, vy);
-    if (vec.length() > 0) vec.normalize();
+    const moving = vec.length() > 0;
+    if (moving) vec.normalize();
     const speed = gameState.isExhausted ? gameState.moveSpeed * EXHAUSTED_SPEED_MULTIPLIER : gameState.moveSpeed;
     body.setVelocity(vec.x * speed, vec.y * speed);
+    return moving;
+  }
+
+  private tickFootsteps(moving: boolean, delta: number) {
+    if (!moving) {
+      this.stepTimer = 0;
+      return;
+    }
+    this.stepTimer += delta;
+    if (this.stepTimer >= STEP_INTERVAL_MS) {
+      this.stepTimer = 0;
+      playFootstep();
+    }
   }
 
   private handleReturnTrigger() {

@@ -312,6 +312,15 @@ html, body {
   min-height: 40px;
 }
 
+/* The post-reveal results grid — small chips so a big haul (especially
+   after "Open All") is all visible at once instead of needing to scroll. */
+.reveal-grid-small {
+  gap: 6px;
+  justify-content: center;
+  max-height: 46vh;
+  overflow-y: auto;
+}
+
 /* One big card revealed at a time in a spotlight stage, instead of the
    whole pack appearing as a static grid — each pull gets its own moment. */
 .reveal-stage {
@@ -321,6 +330,14 @@ html, body {
   justify-content: center;
   min-height: 240px;
   overflow: visible;
+}
+
+/* The [hidden] attribute alone loses to .reveal-stage/.reveal-progress's own
+   explicit `display` (equal specificity, author rule beats the UA default) —
+   force it back off without relying on JS to toggle inline styles instead. */
+.reveal-stage[hidden],
+.reveal-progress[hidden] {
+  display: none;
 }
 
 /* Fix the card's own width before scaling it up — .card-chip otherwise
@@ -370,9 +387,12 @@ html, body {
 
 .reveal-progress {
   display: flex;
+  flex-wrap: wrap;
   justify-content: center;
   gap: 7px;
   margin: 10px 0 14px;
+  max-height: 70px;
+  overflow-y: auto;
 }
 
 .reveal-pip {
@@ -430,7 +450,10 @@ html, body {
 }
 
 .card-chip-small {
-  min-width: 76px;
+  /* A fixed width, not just a floor — .card-art-svg/.card-art-img otherwise
+     size themselves off the browser's ~300px default for a replaced element
+     with no intrinsic size, ballooning the whole chip back up to full size. */
+  width: 76px;
   padding: 3px;
   flex-shrink: 0;
 }

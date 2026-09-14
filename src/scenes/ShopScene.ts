@@ -5,8 +5,10 @@ import { COUNTER_POS, SHOP_ENTRANCE_POS, SHOP_DOOR_TRIGGER, SHOP_SHELF_POSITIONS
 import type { ShelfPosition } from '../game/layout';
 import { humanoidTextureKey, attachCircleBody } from '../game/pixelArt';
 import { DECOR_ITEMS, type DecorDef } from '../game/decor';
+import { playFootstep } from '../game/audio';
 
 const INTERACT_RANGE = 70;
+const STEP_INTERVAL_MS = 300;
 
 interface ShelfVisual {
   id: string;
@@ -27,6 +29,7 @@ export default class ShopScene extends Phaser.Scene {
   private customerSpawnTimer = 0;
   private nextSpawnAt = 3000;
   private decorVisuals = new Set<string>();
+  private stepTimer = 0;
 
   constructor() {
     super('Shop');
@@ -38,6 +41,7 @@ export default class ShopScene extends Phaser.Scene {
     this.customerSpawnTimer = 0;
     this.nextSpawnAt = 2000;
     this.decorVisuals = new Set();
+    this.stepTimer = 0;
 
     // Floor
     this.add.rectangle(400, 300, 760, 560, 0xe8d5b7).setDepth(0);
@@ -208,7 +212,8 @@ export default class ShopScene extends Phaser.Scene {
 
   update(_time: number, delta: number) {
     if (!gameState.paused) {
-      this.handleMovement();
+      const moving = this.handleMovement();
+      this.tickFootsteps(moving, delta);
       this.handleInteract();
       this.handleDoorTrigger();
       gameState.tickEnergy(delta);
@@ -218,7 +223,7 @@ export default class ShopScene extends Phaser.Scene {
     }
   }
 
-  private handleMovement() {
+  private handleMovement(): boolean {
     const body = this.player.body as Phaser.Physics.Arcade.Body;
     let vx = 0;
     let vy = 0;
@@ -227,9 +232,23 @@ export default class ShopScene extends Phaser.Scene {
     if (this.cursors.up?.isDown || this.wasd.up.isDown) vy -= 1;
     if (this.cursors.down?.isDown || this.wasd.down.isDown) vy += 1;
     const vec = new Phaser.Math.Vector2(vx, vy);
-    if (vec.length() > 0) vec.normalize();
+    const moving = vec.length() > 0;
+    if (moving) vec.normalize();
     const speed = gameState.moveSpeed;
     body.setVelocity(vec.x * speed, vec.y * speed);
+    return moving;
+  }
+
+  private tickFootsteps(moving: boolean, delta: number) {
+    if (!moving) {
+      this.stepTimer = 0;
+      return;
+    }
+    this.stepTimer += delta;
+    if (this.stepTimer >= STEP_INTERVAL_MS) {
+      this.stepTimer = 0;
+      playFootstep();
+    }
   }
 
   private handleDoorTrigger() {

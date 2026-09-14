@@ -13,8 +13,10 @@ import {
 } from '../game/layout';
 import type { Season } from '../game/types';
 import { humanoidTextureKey, attachCircleBody } from '../game/pixelArt';
+import { playFootstep } from '../game/audio';
 
 const INTERACT_RANGE = 70;
+const STEP_INTERVAL_MS = 300;
 
 const GROUND_TINTS: Record<Season, number> = {
   Spring: 0x8bc34a,
@@ -40,6 +42,7 @@ export default class TownScene extends Phaser.Scene {
   private fountain!: Phaser.GameObjects.Arc;
   private merchantVisuals: Phaser.GameObjects.GameObject[] = [];
   private merchantLabel!: Phaser.GameObjects.Text;
+  private stepTimer = 0;
 
   constructor() {
     super('Town');
@@ -48,6 +51,7 @@ export default class TownScene extends Phaser.Scene {
   create(data?: { from?: 'shop' | 'wilds' }) {
     this.cameras.main.setBackgroundColor('#2b2118');
     this.npcVisuals = [];
+    this.stepTimer = 0;
 
     this.ground = this.add.rectangle(400, 300, 760, 560, GROUND_TINTS[gameState.season]).setDepth(0);
 
@@ -188,7 +192,8 @@ export default class TownScene extends Phaser.Scene {
 
   update(_time: number, delta: number) {
     if (!gameState.paused) {
-      this.handleMovement();
+      const moving = this.handleMovement();
+      this.tickFootsteps(moving, delta);
       this.handleInteract();
       this.handleDoorTrigger();
       gameState.tickEnergy(delta);
@@ -198,7 +203,7 @@ export default class TownScene extends Phaser.Scene {
     }
   }
 
-  private handleMovement() {
+  private handleMovement(): boolean {
     const body = this.player.body as Phaser.Physics.Arcade.Body;
     let vx = 0;
     let vy = 0;
@@ -207,9 +212,23 @@ export default class TownScene extends Phaser.Scene {
     if (this.cursors.up?.isDown || this.wasd.up.isDown) vy -= 1;
     if (this.cursors.down?.isDown || this.wasd.down.isDown) vy += 1;
     const vec = new Phaser.Math.Vector2(vx, vy);
-    if (vec.length() > 0) vec.normalize();
+    const moving = vec.length() > 0;
+    if (moving) vec.normalize();
     const speed = gameState.moveSpeed;
     body.setVelocity(vec.x * speed, vec.y * speed);
+    return moving;
+  }
+
+  private tickFootsteps(moving: boolean, delta: number) {
+    if (!moving) {
+      this.stepTimer = 0;
+      return;
+    }
+    this.stepTimer += delta;
+    if (this.stepTimer >= STEP_INTERVAL_MS) {
+      this.stepTimer = 0;
+      playFootstep();
+    }
   }
 
   private handleDoorTrigger() {

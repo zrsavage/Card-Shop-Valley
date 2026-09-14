@@ -549,7 +549,6 @@ class GameState {
     if (!this.merchantVisit || this.merchantVisit.day !== this.day) return false;
     const offer = this.merchantVisit.offers.find((o) => o.id === offerId);
     if (!offer || offer.purchased) return false;
-    if (offer.kind === 'rareBundle' && !this.hasBagSpace(3)) return false;
     if (!this.spendGold(offer.cost)) return false;
     offer.purchased = true;
 
