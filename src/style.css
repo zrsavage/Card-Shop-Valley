@@ -7,7 +7,7 @@ html, body {
   padding: 0;
   height: 100%;
   background: #1b120a;
-  font-family: 'Comic Sans MS', 'Baloo 2', system-ui, sans-serif;
+  font-family: 'Baloo 2', 'Comic Sans MS', system-ui, sans-serif;
   color: #2b1d0e;
   overflow: hidden;
 }
@@ -61,9 +61,45 @@ html, body {
   white-space: nowrap;
 }
 
-.hud-timebar {
+@keyframes statPop {
+  0% {
+    transform: scale(1);
+  }
+  40% {
+    transform: scale(1.45);
+    color: #2b8a3e;
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+.stat-pop {
+  display: inline-block;
+  animation: statPop 0.45s ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stat-pop {
+    animation: none;
+  }
+}
+
+.hud-energybar {
   flex: 1;
-  min-width: 90px;
+  min-width: 110px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.energy-icon {
+  font-size: 15px;
+  filter: drop-shadow(0 1px 0 #2b1d0e33);
+}
+
+.energy-track {
+  flex: 1;
   height: 10px;
   background: #e0d2b8;
   border-radius: 6px;
@@ -71,11 +107,15 @@ html, body {
   border: 2px solid #2b1d0e;
 }
 
-.time-fill {
+.energy-fill {
   height: 100%;
   width: 100%;
-  background: linear-gradient(90deg, #ffb703, #fb8500);
-  transition: width 0.2s linear;
+  background: linear-gradient(90deg, #ffd166, #fb8500);
+  transition: width 0.2s linear, background 0.3s ease;
+}
+
+.energy-fill.energy-low {
+  background: linear-gradient(90deg, #ff9166, #d62828);
 }
 
 .btn {
@@ -112,7 +152,7 @@ html, body {
 }
 
 .btn-secondary {
-  background: #cfd8dc;
+  background: #e3c9a3;
 }
 
 .festival-banner {
@@ -261,6 +301,51 @@ html, body {
   flex-wrap: wrap;
   gap: 10px;
   margin-bottom: 14px;
+  min-height: 40px;
+}
+
+@keyframes cardPopIn {
+  0% {
+    transform: scale(0.15) rotate(-10deg);
+    opacity: 0;
+  }
+  60% {
+    transform: scale(1.1) rotate(4deg);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1) rotate(0deg);
+    opacity: 1;
+  }
+}
+
+@keyframes revealGlowPulse {
+  0% {
+    filter: drop-shadow(0 0 0 var(--glow, transparent));
+  }
+  40% {
+    filter: drop-shadow(0 0 18px var(--glow, transparent));
+  }
+  100% {
+    filter: drop-shadow(0 0 0 transparent);
+  }
+}
+
+.card-reveal-pop {
+  animation: cardPopIn 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+.card-reveal-flourish {
+  animation:
+    cardPopIn 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) both,
+    revealGlowPulse 0.7s ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .card-reveal-pop,
+  .card-reveal-flourish {
+    animation: none;
+  }
 }
 
 /* A card paired with a separate value tag underneath — the card face

@@ -6,7 +6,6 @@ import { NPCS } from './npcs';
 export const bus = new Phaser.Events.EventEmitter();
 
 export const SHELF_COUNT = SHOP_SHELF_POSITIONS.length;
-export const DAY_LENGTH_MS = 90_000;
 export const DAYS_PER_SEASON = 7;
 export const SEASONS: Season[] = ['Spring', 'Summer', 'Fall', 'Winter'];
 
@@ -14,6 +13,17 @@ export const PLAYER_BASE_ATTACK_DAMAGE = 14;
 export const WEAPON_TIER_DAMAGE_BONUS = 6;
 export const PLAYER_BASE_MAX_HP = 100;
 export const VITALITY_TIER_HP_BONUS = 40;
+
+export const PLAYER_MAX_ENERGY = 100;
+// Passive drain: a full day's energy (idling in Town/Shop) lasts ~5 minutes.
+export const ENERGY_DRAIN_PER_SEC = PLAYER_MAX_ENERGY / 300;
+// On top of the passive drain, active on top while in the Wilds — burns
+// through energy roughly 4x faster than just standing around.
+export const WILDS_EXTRA_ENERGY_DRAIN_PER_SEC = ENERGY_DRAIN_PER_SEC * 3;
+// Exhausted (0 energy): the player is "practically defenseless" in combat.
+export const EXHAUSTED_ATTACK_DAMAGE = 1;
+export const EXHAUSTED_SPEED_MULTIPLIER = 0.4;
+export const EXHAUSTED_DAMAGE_TAKEN_MULTIPLIER = 1.6;
 
 export interface DaySummary {
   day: number;
@@ -72,12 +82,12 @@ class GameState {
   combatUpgrades: CombatUpgrades = defaultCombatUpgrades();
   npcs: Record<string, NpcState> = defaultNpcStates();
 
-  dayTimeRemaining = DAY_LENGTH_MS;
   paused = false;
   goldEarnedToday = 0;
   cardsSoldToday = 0;
 
   hp = PLAYER_BASE_MAX_HP;
+  energy = PLAYER_MAX_ENERGY;
   /** Pack ids earned from combat, awaiting a free open at the counter. */
   ownedPacks: string[] = [];
 
@@ -94,6 +104,9 @@ class GameState {
   }
 
   get attackDamage(): number {
+    // Running on empty overrides upgrades entirely — exhaustion means
+    // "practically defenseless," not just "a bit weaker."
+    if (this.isExhausted) return EXHAUSTED_ATTACK_DAMAGE;
     const tiers = [this.combatUpgrades.weaponTier1, this.combatUpgrades.weaponTier2, this.combatUpgrades.weaponTier3].filter(
       Boolean,
     ).length;
@@ -105,6 +118,14 @@ class GameState {
       Boolean,
     ).length;
     return PLAYER_BASE_MAX_HP + tiers * VITALITY_TIER_HP_BONUS;
+  }
+
+  get maxEnergy(): number {
+    return PLAYER_MAX_ENERGY;
+  }
+
+  get isExhausted(): boolean {
+    return this.energy <= 0;
   }
 
   addGold(amount: number) {
@@ -282,15 +303,18 @@ class GameState {
     bus.emit('paused-changed', paused);
   }
 
-  tickDay(deltaMs: number) {
+  /** Passive drain always applies; pass extraDrainPerSec for activity-specific
+   * exertion (e.g. the Wilds) on top of it. */
+  tickEnergy(deltaMs: number, extraDrainPerSec = 0) {
     if (this.paused) return;
-    this.dayTimeRemaining -= deltaMs;
-    bus.emit('time-changed', Math.max(0, this.dayTimeRemaining));
-    if (this.dayTimeRemaining <= 0) {
-      this.endDay();
-    }
+    const drain = (ENERGY_DRAIN_PER_SEC + extraDrainPerSec) * (deltaMs / 1000);
+    if (drain <= 0) return;
+    this.energy = Math.max(0, this.energy - drain);
+    bus.emit('energy-changed', this.energy);
   }
 
+  /** Manually called — days no longer end on a timer, only when the player
+   * chooses to (e.g. the End Day button). */
   endDay() {
     const summary: DaySummary = {
       day: this.day,
@@ -299,9 +323,10 @@ class GameState {
       cardsSold: this.cardsSoldToday,
     };
     this.day += 1;
-    this.dayTimeRemaining = DAY_LENGTH_MS;
     this.goldEarnedToday = 0;
     this.cardsSoldToday = 0;
+    this.energy = this.maxEnergy;
+    bus.emit('energy-changed', this.energy);
     bus.emit('day-changed', this.day);
     bus.emit('day-summary', summary);
   }

@@ -166,7 +166,7 @@ export default class ShopScene extends Phaser.Scene {
       this.handleMovement();
       this.handleInteract();
       this.handleDoorTrigger();
-      gameState.tickDay(delta);
+      gameState.tickEnergy(delta);
       this.tickCustomerSpawns(delta);
     } else {
       this.promptText.setVisible(false);
@@ -242,7 +242,9 @@ export default class ShopScene extends Phaser.Scene {
     const stockedShelves = this.shelfVisuals.filter((v) => gameState.shelves.find((s) => s.id === v.id)?.card);
     if (activeCustomers >= maxConcurrent || stockedShelves.length === 0) return;
 
-    const target = Phaser.Utils.Array.GetRandom(stockedShelves);
-    spawnCustomer(this, target.id, target.x, target.y);
+    spawnCustomer(
+      this,
+      stockedShelves.map((v) => ({ id: v.id, x: v.x, y: v.y })),
+    );
   }
 }

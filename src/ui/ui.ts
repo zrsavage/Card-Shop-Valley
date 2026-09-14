@@ -1,11 +1,11 @@
-import { gameState, bus, DAY_LENGTH_MS, WEAPON_TIER_DAMAGE_BONUS, VITALITY_TIER_HP_BONUS, SEASONS, type DaySummary } from '../game/state';
+import { gameState, bus, WEAPON_TIER_DAMAGE_BONUS, VITALITY_TIER_HP_BONUS, SEASONS, type DaySummary } from '../game/state';
 import { PACKS, openPack, type PackDefinition } from '../game/packs';
 import { RARITIES, RARITY_LABELS, RARITY_BASE_VALUE, SEASON_PRICE_MULTIPLIER } from '../game/cards';
 import { NPCS, friendshipTier, FRIENDSHIP_TIER_LABELS } from '../game/npcs';
 import { generateCardArtSvg, cardArtImagePath } from '../game/cardArt';
 import { SEASON_SET_NAME, SEASON_CARD_POOL, STAGE_VALUE_MULTIPLIER, type SpeciesCard } from '../game/species';
 import { ZONE_DEFS } from '../game/combat';
-import type { Card, ShopUpgrades, TownUpgrades, CombatUpgrades, Season } from '../game/types';
+import type { Card, ShopUpgrades, TownUpgrades, CombatUpgrades, Season, Rarity } from '../game/types';
 
 function effectivePackCost(pack: PackDefinition): number {
   return Math.round(pack.cost * SEASON_PRICE_MULTIPLIER[gameState.season]);
@@ -272,19 +272,81 @@ function openCounterModal() {
   modalLayer.querySelector('.close-btn')!.addEventListener('click', closeModal);
 }
 
+// Matches the rarity-pill colors elsewhere in the UI, used here as a glow
+// behind each card as it's revealed — bigger and warmer for rarer pulls.
+const REVEAL_GLOW_COLOR: Record<Rarity, string> = {
+  common: '#5aa8d9',
+  uncommon: '#4fb85c',
+  rare: '#cf9a26',
+  epic: '#9c4fd9',
+  legendary: '#d93e3e',
+};
+
 function openPackRevealModal(pack: PackDefinition, cards: Card[]) {
-  const cardsHtml = cards.map((c) => cardSlotHtml(c)).join('');
   const season = cards[0]?.season ?? gameState.season;
+  // Reveal worst-to-best — classic pack-opening suspense, saving the best
+  // pull (if there is one) for last regardless of the order it was rolled in.
+  const order = [...cards].sort((a, b) => RARITIES.indexOf(a.rarity) - RARITIES.indexOf(b.rarity));
+
   renderModal(`
     <h2>${pack.name} Opened!</h2>
     <p class="modal-sub">${SEASON_SET_NAME[season]}</p>
-    <div class="reveal-grid">${cardsHtml}</div>
-    <button class="btn collect-btn">Collect Cards</button>
+    <div class="reveal-grid" id="reveal-grid"></div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary skip-reveal-btn">Skip &raquo;</button>
+      <button class="btn collect-btn" hidden>Collect Cards</button>
+    </div>
   `);
-  modalLayer.querySelector('.collect-btn')!.addEventListener('click', () => {
+
+  const grid = modalLayer.querySelector('#reveal-grid') as HTMLDivElement;
+  const skipBtn = modalLayer.querySelector('.skip-reveal-btn') as HTMLButtonElement;
+  const collectBtn = modalLayer.querySelector('.collect-btn') as HTMLButtonElement;
+
+  let idx = 0;
+  let timer: ReturnType<typeof setTimeout> | null = null;
+
+  function appendCard(card: Card, animate: boolean) {
+    const wrap = document.createElement('div');
+    wrap.className = animate ? 'card-reveal-pop' : '';
+    if (animate && (card.rarity === 'epic' || card.rarity === 'legendary')) {
+      wrap.classList.add('card-reveal-flourish');
+    }
+    wrap.style.setProperty('--glow', REVEAL_GLOW_COLOR[card.rarity]);
+    wrap.innerHTML = cardSlotHtml(card);
+    grid.appendChild(wrap);
+  }
+
+  function finish() {
+    timer = null;
+    skipBtn.hidden = true;
+    collectBtn.hidden = false;
+  }
+
+  function revealNext() {
+    if (idx >= order.length) {
+      finish();
+      return;
+    }
+    appendCard(order[idx], true);
+    idx += 1;
+    timer = setTimeout(revealNext, 420);
+  }
+
+  skipBtn.addEventListener('click', () => {
+    if (timer) clearTimeout(timer);
+    while (idx < order.length) {
+      appendCard(order[idx], false);
+      idx += 1;
+    }
+    finish();
+  });
+
+  collectBtn.addEventListener('click', () => {
     gameState.addCardsToInventory(cards);
     closeModal();
   });
+
+  revealNext();
 }
 
 // --- Shelf ---
@@ -614,7 +676,10 @@ export function initUI() {
       <div class="hud-stat">❤ <span id="hp-value">${gameState.hp}</span>/<span id="max-hp-value">${gameState.maxHp}</span></div>
       <div class="hud-stat">Day <span id="day-value">${gameState.day}</span> &middot; <span id="season-value">${gameState.season}</span></div>
       <div id="festival-banner" class="festival-banner" ${gameState.isFestivalDay ? '' : 'hidden'}>🎉 Festival</div>
-      <div class="hud-timebar"><div id="time-fill" class="time-fill"></div></div>
+      <div class="hud-energybar" title="Energy — fades slowly on its own, faster in the Wilds. Sleep (End Day) to restore it.">
+        <span class="energy-icon">&#9889;</span>
+        <div class="energy-track"><div id="energy-fill" class="energy-fill${gameState.energy / gameState.maxEnergy < 0.25 ? ' energy-low' : ''}" style="width:${(gameState.energy / gameState.maxEnergy) * 100}%"></div></div>
+      </div>
       <button id="bag-btn" class="btn btn-small">&#127890; Bag (<span id="bag-count">${gameState.inventory.length}</span>)</button>
       <button id="encyclopedia-btn" class="btn btn-small">&#128214; Cards</button>
       <button id="end-day-btn" class="btn btn-small">End Day</button>
@@ -634,8 +699,17 @@ export function initUI() {
 
   renderSeasonBadge();
 
+  let lastGold = gameState.gold;
   bus.on('gold-changed', (gold: number) => {
-    document.getElementById('gold-value')!.textContent = String(gold);
+    const goldEl = document.getElementById('gold-value')!;
+    goldEl.textContent = String(gold);
+    if (gold > lastGold) {
+      // A little "reward" pop instead of the number just silently updating.
+      goldEl.classList.remove('stat-pop');
+      void goldEl.offsetWidth; // restart the animation if it's already mid-pop
+      goldEl.classList.add('stat-pop');
+    }
+    lastGold = gold;
     modalLayer.querySelectorAll<HTMLButtonElement>('.buy-pack-btn').forEach((btn) => {
       const pack = PACKS.find((p) => p.id === btn.dataset.pack);
       if (pack) btn.disabled = gold < effectivePackCost(pack);
@@ -656,10 +730,13 @@ export function initUI() {
     document.getElementById('day-value')!.textContent = String(day);
     renderSeasonBadge();
   });
-  bus.on('time-changed', (ms: number) => {
-    const pct = Math.max(0, Math.min(100, (ms / DAY_LENGTH_MS) * 100));
-    const fill = document.getElementById('time-fill');
-    if (fill) fill.style.width = `${pct}%`;
+  bus.on('energy-changed', (energy: number) => {
+    const pct = Math.max(0, Math.min(100, (energy / gameState.maxEnergy) * 100));
+    const fill = document.getElementById('energy-fill');
+    if (fill) {
+      fill.style.width = `${pct}%`;
+      fill.classList.toggle('energy-low', pct < 25);
+    }
   });
   bus.on('inventory-changed', renderBagCount);
   bus.on('hp-changed', (hp: number) => {

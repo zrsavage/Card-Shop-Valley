@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { gameState, bus, DAY_LENGTH_MS } from '../game/state';
+import { gameState, bus } from '../game/state';
 import { NPCS } from '../game/npcs';
 import {
   TOWN_SHOP_DOOR_POS,
@@ -146,7 +146,10 @@ export default class TownScene extends Phaser.Scene {
   }
 
   private updateNpcPositions() {
-    const isAfternoon = gameState.dayTimeRemaining / DAY_LENGTH_MS < 0.5;
+    // No in-day clock anymore — energy spent stands in for how far into the
+    // day it is (past the halfway point, NPCs have moved on to their
+    // afternoon spot).
+    const isAfternoon = gameState.energy / gameState.maxEnergy < 0.5;
     for (const visual of this.npcVisuals) {
       const def = NPCS.find((n) => n.id === visual.id)!;
       const spot = isAfternoon ? def.afternoonSpot : def.morningSpot;
@@ -160,7 +163,7 @@ export default class TownScene extends Phaser.Scene {
       this.handleMovement();
       this.handleInteract();
       this.handleDoorTrigger();
-      gameState.tickDay(delta);
+      gameState.tickEnergy(delta);
       this.updateNpcPositions();
     } else {
       this.promptText.setVisible(false);

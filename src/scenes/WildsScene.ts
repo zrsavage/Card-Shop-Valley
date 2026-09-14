@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { gameState, bus } from '../game/state';
+import { gameState, bus, WILDS_EXTRA_ENERGY_DRAIN_PER_SEC, EXHAUSTED_SPEED_MULTIPLIER, EXHAUSTED_DAMAGE_TAKEN_MULTIPLIER } from '../game/state';
 import { showFloatingText } from '../game/fx';
 import { ZONE_DEFS, rollPackDrop, type EnemyDef, type ZoneDef } from '../game/combat';
 import { PACKS } from '../game/packs';
@@ -118,7 +118,7 @@ export default class WildsScene extends Phaser.Scene {
     this.updateEnemies(time, delta);
     this.tickSpawns(delta);
     this.tickRegen(time, delta);
-    gameState.tickDay(delta);
+    gameState.tickEnergy(delta, WILDS_EXTRA_ENERGY_DRAIN_PER_SEC);
 
     const nearReturn = Phaser.Math.Distance.Between(this.player.x, this.player.y, WILDS_TO_TOWN_TRIGGER.x, WILDS_TO_TOWN_TRIGGER.y) < 70;
     this.promptText.setVisible(nearReturn);
@@ -137,7 +137,8 @@ export default class WildsScene extends Phaser.Scene {
     if (this.cursors.down?.isDown || this.wasd.down.isDown) vy += 1;
     const vec = new Phaser.Math.Vector2(vx, vy);
     if (vec.length() > 0) vec.normalize();
-    body.setVelocity(vec.x * PLAYER_SPEED, vec.y * PLAYER_SPEED);
+    const speed = gameState.isExhausted ? PLAYER_SPEED * EXHAUSTED_SPEED_MULTIPLIER : PLAYER_SPEED;
+    body.setVelocity(vec.x * speed, vec.y * speed);
   }
 
   private handleReturnTrigger() {
@@ -222,8 +223,9 @@ export default class WildsScene extends Phaser.Scene {
       if (distToPlayer < contactDist && time - enemy.lastContactTime > CONTACT_DAMAGE_COOLDOWN_MS) {
         enemy.lastContactTime = time;
         this.lastDamageTime = time;
-        const dead = gameState.takeDamage(enemy.def.damage);
-        showFloatingText(this, this.player.x, this.player.y - 24, `-${enemy.def.damage}`, '#ff6b6b');
+        const damage = gameState.isExhausted ? Math.round(enemy.def.damage * EXHAUSTED_DAMAGE_TAKEN_MULTIPLIER) : enemy.def.damage;
+        const dead = gameState.takeDamage(damage);
+        showFloatingText(this, this.player.x, this.player.y - 24, `-${damage}`, '#ff6b6b');
         if (dead) {
           this.handlePlayerDown();
           return;
