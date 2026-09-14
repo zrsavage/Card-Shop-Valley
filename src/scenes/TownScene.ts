@@ -11,6 +11,7 @@ import {
   TOWN_FROM_WILDS_POS,
 } from '../game/layout';
 import type { Season } from '../game/types';
+import { humanoidTextureKey, attachCircleBody } from '../game/pixelArt';
 
 const INTERACT_RANGE = 70;
 const PLAYER_SPEED = 190;
@@ -24,12 +25,12 @@ const GROUND_TINTS: Record<Season, number> = {
 
 interface NpcVisual {
   id: string;
-  sprite: Phaser.GameObjects.Arc;
+  sprite: Phaser.GameObjects.Sprite;
   label: Phaser.GameObjects.Text;
 }
 
 export default class TownScene extends Phaser.Scene {
-  player!: Phaser.GameObjects.Arc;
+  player!: Phaser.GameObjects.Sprite;
   private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
   private wasd!: Record<'up' | 'down' | 'left' | 'right', Phaser.Input.Keyboard.Key>;
   private interactKey!: Phaser.Input.Keyboard.Key;
@@ -79,7 +80,8 @@ export default class TownScene extends Phaser.Scene {
 
     // NPCs
     for (const npc of NPCS) {
-      const sprite = this.add.circle(npc.morningSpot.x, npc.morningSpot.y, 14, npc.color).setDepth(4).setStrokeStyle(2, 0x2b1d0e);
+      const npcTexture = humanoidTextureKey(this, npc.color, 28);
+      const sprite = this.add.sprite(npc.morningSpot.x, npc.morningSpot.y, npcTexture).setDepth(4);
       const label = this.add
         .text(npc.morningSpot.x, npc.morningSpot.y - 24, npc.name, { fontSize: '11px', color: '#fff8ec', backgroundColor: '#00000088', padding: { x: 4, y: 1 } })
         .setOrigin(0.5)
@@ -89,11 +91,11 @@ export default class TownScene extends Phaser.Scene {
 
     // Player — arrives at the door leading back from wherever they came from.
     const spawnPos = data?.from === 'wilds' ? TOWN_FROM_WILDS_POS : TOWN_SHOP_DOOR_POS;
-    this.player = this.add.circle(spawnPos.x, spawnPos.y, 16, 0xffb703).setDepth(5).setStrokeStyle(3, 0x8a5a00);
+    const playerTexture = humanoidTextureKey(this, 0xffb703, 32);
+    this.player = this.add.sprite(spawnPos.x, spawnPos.y, playerTexture).setDepth(5);
     this.physics.add.existing(this.player);
-    const playerBody = this.player.body as Phaser.Physics.Arcade.Body;
-    playerBody.setCircle(16);
-    playerBody.setCollideWorldBounds(true);
+    attachCircleBody(this.player, 16);
+    (this.player.body as Phaser.Physics.Arcade.Body).setCollideWorldBounds(true);
     this.physics.world.setBounds(30, 30, 740, 540);
     this.physics.add.collider(this.player, townHallBody);
 

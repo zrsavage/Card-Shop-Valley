@@ -498,6 +498,24 @@ function openNpcModal(npcId: string) {
   modalLayer.querySelector('.close-btn')!.addEventListener('click', closeModal);
 }
 
+// --- Bag (opened on demand only — it used to sit permanently docked
+// across the bottom of the screen, covering the play area) ---
+
+function openBagModal() {
+  const body =
+    gameState.inventory.length === 0
+      ? `<p class="modal-sub">Your bag is empty. Buy or find a pack to fill it up.</p>`
+      : `<div class="reveal-grid">${gameState.inventory.map((c) => cardSlotHtml(c)).join('')}</div>`;
+
+  renderModal(`
+    <h2>Bag</h2>
+    <p class="modal-sub">${gameState.inventory.length} card${gameState.inventory.length === 1 ? '' : 's'} on hand. Place them on a shelf, gift one to a townsfolk, or just browse.</p>
+    ${body}
+    <button class="btn btn-secondary close-btn">Close</button>
+  `);
+  modalLayer.querySelector('.close-btn')!.addEventListener('click', closeModal);
+}
+
 // --- Encyclopedia (every card: name, rarity, rough price, art) ---
 
 let encyclopediaSeason: Season = gameState.season;
@@ -574,18 +592,11 @@ function openEncyclopediaModal() {
   modalLayer.querySelector('.close-btn')!.addEventListener('click', closeModal);
 }
 
-// --- HUD / inventory tray ---
+// --- HUD ---
 
-function renderInventoryTray() {
-  const tray = document.getElementById('inventory-tray')!;
-  if (gameState.inventory.length === 0) {
-    tray.innerHTML = `<div class="tray-empty">Bag empty — buy a pack at the counter</div>`;
-    return;
-  }
-  tray.innerHTML = `
-    <div class="tray-label">Bag (${gameState.inventory.length})</div>
-    <div class="tray-items">${gameState.inventory.map((c) => cardSlotHtml(c, true)).join('')}</div>
-  `;
+function renderBagCount() {
+  const el = document.getElementById('bag-count');
+  if (el) el.textContent = String(gameState.inventory.length);
 }
 
 function renderSeasonBadge() {
@@ -604,10 +615,10 @@ export function initUI() {
       <div class="hud-stat">Day <span id="day-value">${gameState.day}</span> &middot; <span id="season-value">${gameState.season}</span></div>
       <div id="festival-banner" class="festival-banner" ${gameState.isFestivalDay ? '' : 'hidden'}>🎉 Festival</div>
       <div class="hud-timebar"><div id="time-fill" class="time-fill"></div></div>
+      <button id="bag-btn" class="btn btn-small">&#127890; Bag (<span id="bag-count">${gameState.inventory.length}</span>)</button>
       <button id="encyclopedia-btn" class="btn btn-small">&#128214; Cards</button>
       <button id="end-day-btn" class="btn btn-small">End Day</button>
     </div>
-    <div id="inventory-tray"></div>
     <div id="modal-layer"></div>
   `;
   modalLayer = root.querySelector('#modal-layer') as HTMLDivElement;
@@ -615,12 +626,12 @@ export function initUI() {
   document.getElementById('end-day-btn')!.addEventListener('click', () => {
     gameState.endDay();
   });
+  document.getElementById('bag-btn')!.addEventListener('click', openBagModal);
   document.getElementById('encyclopedia-btn')!.addEventListener('click', () => {
     encyclopediaSeason = gameState.season;
     openEncyclopediaModal();
   });
 
-  renderInventoryTray();
   renderSeasonBadge();
 
   bus.on('gold-changed', (gold: number) => {
@@ -650,7 +661,7 @@ export function initUI() {
     const fill = document.getElementById('time-fill');
     if (fill) fill.style.width = `${pct}%`;
   });
-  bus.on('inventory-changed', renderInventoryTray);
+  bus.on('inventory-changed', renderBagCount);
   bus.on('hp-changed', (hp: number) => {
     const el = document.getElementById('hp-value');
     if (el) el.textContent = String(Math.round(hp));

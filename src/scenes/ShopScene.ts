@@ -3,6 +3,7 @@ import { gameState, bus } from '../game/state';
 import { spawnCustomer } from '../game/Customer';
 import { COUNTER_POS, SHOP_ENTRANCE_POS, SHOP_DOOR_TRIGGER, SHOP_SHELF_POSITIONS } from '../game/layout';
 import type { ShelfPosition } from '../game/layout';
+import { humanoidTextureKey, attachCircleBody } from '../game/pixelArt';
 
 const INTERACT_RANGE = 70;
 const PLAYER_SPEED = 190;
@@ -17,7 +18,7 @@ interface ShelfVisual {
 }
 
 export default class ShopScene extends Phaser.Scene {
-  player!: Phaser.GameObjects.Arc;
+  player!: Phaser.GameObjects.Sprite;
   private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
   private wasd!: Record<'up' | 'down' | 'left' | 'right', Phaser.Input.Keyboard.Key>;
   private interactKey!: Phaser.Input.Keyboard.Key;
@@ -63,11 +64,11 @@ export default class ShopScene extends Phaser.Scene {
     });
 
     // Player
-    this.player = this.add.circle(SHOP_ENTRANCE_POS.x, SHOP_ENTRANCE_POS.y, 16, 0xffb703).setDepth(5).setStrokeStyle(3, 0x8a5a00);
+    const playerTexture = humanoidTextureKey(this, 0xffb703, 32);
+    this.player = this.add.sprite(SHOP_ENTRANCE_POS.x, SHOP_ENTRANCE_POS.y, playerTexture).setDepth(5);
     this.physics.add.existing(this.player);
-    const playerBody = this.player.body as Phaser.Physics.Arcade.Body;
-    playerBody.setCircle(16);
-    playerBody.setCollideWorldBounds(true);
+    attachCircleBody(this.player, 16);
+    (this.player.body as Phaser.Physics.Arcade.Body).setCollideWorldBounds(true);
     this.physics.world.setBounds(30, 30, 740, 540);
 
     this.physics.add.collider(this.player, counterBody);

@@ -2,13 +2,14 @@ import Phaser from 'phaser';
 import { gameState } from './state';
 import { SHOP_DOOR_TRIGGER } from './layout';
 import { showFloatingText } from './fx';
+import { humanoidTextureKey } from './pixelArt';
 
 const CUSTOMER_DOOR_POS = { x: SHOP_DOOR_TRIGGER.x, y: 580 };
 
 const CUSTOMER_COLORS = [0x4cc9f0, 0xf72585, 0x90be6d, 0xf9844a, 0x9b5de5, 0x577590];
 const WALK_SPEED = 130; // px/sec
 
-function tweenTo(scene: Phaser.Scene, target: Phaser.GameObjects.Arc, x: number, y: number, onDone: () => void) {
+function tweenTo(scene: Phaser.Scene, target: Phaser.GameObjects.Sprite, x: number, y: number, onDone: () => void) {
   const dist = Phaser.Math.Distance.Between(target.x, target.y, x, y);
   const duration = (dist / WALK_SPEED) * 1000;
   scene.tweens.add({
@@ -23,7 +24,8 @@ function tweenTo(scene: Phaser.Scene, target: Phaser.GameObjects.Arc, x: number,
 
 export function spawnCustomer(scene: Phaser.Scene, shelfId: string, shelfX: number, shelfY: number) {
   const color = Phaser.Utils.Array.GetRandom(CUSTOMER_COLORS);
-  const sprite = scene.add.circle(CUSTOMER_DOOR_POS.x, CUSTOMER_DOOR_POS.y, 14, color).setDepth(4);
+  const texture = humanoidTextureKey(scene, color, 28);
+  const sprite = scene.add.sprite(CUSTOMER_DOOR_POS.x, CUSTOMER_DOOR_POS.y, texture).setDepth(4);
   (sprite as any).__customer = true;
 
   const approachX = shelfX + Phaser.Math.Between(-20, 20);
@@ -56,7 +58,7 @@ export function spawnCustomer(scene: Phaser.Scene, shelfId: string, shelfX: numb
   });
 }
 
-function leaveShop(scene: Phaser.Scene, sprite: Phaser.GameObjects.Arc) {
+function leaveShop(scene: Phaser.Scene, sprite: Phaser.GameObjects.Sprite) {
   scene.time.delayedCall(300, () => {
     tweenTo(scene, sprite, CUSTOMER_DOOR_POS.x, CUSTOMER_DOOR_POS.y, () => sprite.destroy());
   });

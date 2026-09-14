@@ -4,9 +4,10 @@ import { showFloatingText } from '../game/fx';
 import { ZONE_DEFS, rollPackDrop, type EnemyDef, type ZoneDef } from '../game/combat';
 import { PACKS } from '../game/packs';
 import { WILDS_FROM_TOWN_POS, WILDS_TO_TOWN_TRIGGER } from '../game/layout';
+import { humanoidTextureKey, monsterTextureKey, attachCircleBody } from '../game/pixelArt';
 
 const PLAYER_SPEED = 190;
-const MELEE_RANGE = 55;
+const MELEE_RANGE = 85;
 const ATTACK_COOLDOWN_MS = 400;
 const CONTACT_DAMAGE_COOLDOWN_MS = 900;
 const HP_REGEN_DELAY_MS = 3000;
@@ -14,7 +15,7 @@ const HP_REGEN_PER_SEC = 6;
 
 interface EnemyInstance {
   def: EnemyDef;
-  sprite: Phaser.GameObjects.Arc;
+  sprite: Phaser.GameObjects.Sprite;
   hpBarBg: Phaser.GameObjects.Rectangle;
   hpBarFill: Phaser.GameObjects.Rectangle;
   hp: number;
@@ -23,7 +24,7 @@ interface EnemyInstance {
 }
 
 export default class WildsScene extends Phaser.Scene {
-  player!: Phaser.GameObjects.Arc;
+  player!: Phaser.GameObjects.Sprite;
   private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
   private wasd!: Record<'up' | 'down' | 'left' | 'right', Phaser.Input.Keyboard.Key>;
   private attackKey!: Phaser.Input.Keyboard.Key;
@@ -70,14 +71,11 @@ export default class WildsScene extends Phaser.Scene {
 
     gameState.healFully();
 
-    this.player = this.add
-      .circle(WILDS_FROM_TOWN_POS.x, WILDS_FROM_TOWN_POS.y, 16, 0xffb703)
-      .setDepth(5)
-      .setStrokeStyle(3, 0x8a5a00);
+    const playerTexture = humanoidTextureKey(this, 0xffb703, 32);
+    this.player = this.add.sprite(WILDS_FROM_TOWN_POS.x, WILDS_FROM_TOWN_POS.y, playerTexture).setDepth(5);
     this.physics.add.existing(this.player);
-    const playerBody = this.player.body as Phaser.Physics.Arcade.Body;
-    playerBody.setCircle(16);
-    playerBody.setCollideWorldBounds(true);
+    attachCircleBody(this.player, 16);
+    (this.player.body as Phaser.Physics.Arcade.Body).setCollideWorldBounds(true);
     this.physics.world.setBounds(30, 30, 740, 540);
 
     this.promptText = this.add
@@ -265,7 +263,8 @@ export default class WildsScene extends Phaser.Scene {
       if (Phaser.Math.Distance.Between(x, y, this.player.x, this.player.y) > 160) break;
     }
 
-    const sprite = this.add.circle(x, y, def.radius, def.color).setDepth(4).setStrokeStyle(2, 0x2b1d0e);
+    const texture = monsterTextureKey(this, def.color, def.radius * 2);
+    const sprite = this.add.sprite(x, y, texture).setDepth(4);
     const hpBarBg = this.add.rectangle(x, y - def.radius - 10, 30, 5, 0x2b1d0e).setDepth(6);
     const hpBarFill = this.add.rectangle(x - 15, y - def.radius - 10, 30, 5, 0xff6b6b).setOrigin(0, 0.5).setDepth(7);
     hpBarBg.setOrigin(0.5, 0.5);
