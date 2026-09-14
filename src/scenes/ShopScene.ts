@@ -4,9 +4,9 @@ import { spawnCustomer } from '../game/Customer';
 import { COUNTER_POS, SHOP_ENTRANCE_POS, SHOP_DOOR_TRIGGER, SHOP_SHELF_POSITIONS } from '../game/layout';
 import type { ShelfPosition } from '../game/layout';
 import { humanoidTextureKey, attachCircleBody } from '../game/pixelArt';
+import { DECOR_ITEMS, type DecorDef } from '../game/decor';
 
 const INTERACT_RANGE = 70;
-const PLAYER_SPEED = 240;
 
 interface ShelfVisual {
   id: string;
@@ -26,6 +26,7 @@ export default class ShopScene extends Phaser.Scene {
   private shelfVisuals: ShelfVisual[] = [];
   private customerSpawnTimer = 0;
   private nextSpawnAt = 3000;
+  private decorVisuals = new Set<string>();
 
   constructor() {
     super('Shop');
@@ -36,6 +37,7 @@ export default class ShopScene extends Phaser.Scene {
     this.shelfVisuals = [];
     this.customerSpawnTimer = 0;
     this.nextSpawnAt = 2000;
+    this.decorVisuals = new Set();
 
     // Floor
     this.add.rectangle(400, 300, 760, 560, 0xe8d5b7).setDepth(0);
@@ -64,7 +66,7 @@ export default class ShopScene extends Phaser.Scene {
     });
 
     // Player
-    const playerTexture = humanoidTextureKey(this, 0xffb703, 32);
+    const playerTexture = humanoidTextureKey(this, gameState.equippedOutfitColor, 32);
     this.player = this.add.sprite(SHOP_ENTRANCE_POS.x, SHOP_ENTRANCE_POS.y, playerTexture).setDepth(5);
     this.physics.add.existing(this.player);
     attachCircleBody(this.player, 16);
@@ -90,17 +92,60 @@ export default class ShopScene extends Phaser.Scene {
     this.interactKey = this.input.keyboard!.addKey('E');
 
     this.refreshShelfVisuals();
+    this.refreshDecor();
     bus.on('shelves-changed', this.refreshShelfVisuals, this);
     bus.on('shop-upgrades-changed', this.onUpgradesChanged, this);
     bus.on('paused-changed', this.onPausedChanged, this);
     bus.on('day-summary', this.onDaySummary, this);
+    bus.on('cosmetics-changed', this.onCosmeticsChanged, this);
 
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       bus.off('shelves-changed', this.refreshShelfVisuals, this);
       bus.off('shop-upgrades-changed', this.onUpgradesChanged, this);
       bus.off('paused-changed', this.onPausedChanged, this);
       bus.off('day-summary', this.onDaySummary, this);
+      bus.off('cosmetics-changed', this.onCosmeticsChanged, this);
     });
+  }
+
+  private onCosmeticsChanged() {
+    this.player.setTexture(humanoidTextureKey(this, gameState.equippedOutfitColor, 32));
+    this.refreshDecor();
+  }
+
+  /** Purely cosmetic gold sinks — once bought, a decoration is drawn once
+   * and stays, no placement UI needed. */
+  private refreshDecor() {
+    for (const item of DECOR_ITEMS) {
+      if (!gameState.ownedDecor.includes(item.id)) continue;
+      if (this.decorVisuals.has(item.id)) continue;
+      this.decorVisuals.add(item.id);
+      this.drawDecor(item);
+    }
+  }
+
+  private drawDecor(item: DecorDef) {
+    switch (item.kind) {
+      case 'rug':
+        this.add.rectangle(item.x, item.y, 140, 90, item.color, 0.55).setDepth(0).setStrokeStyle(2, 0x2b1d0e, 0.4);
+        break;
+      case 'plant':
+        this.add.rectangle(item.x, item.y + 14, 20, 16, 0x6d4c41).setDepth(2);
+        this.add.circle(item.x, item.y - 6, 16, item.color).setDepth(2);
+        break;
+      case 'banner':
+        this.add.rectangle(item.x, item.y - 20, 50, 8, 0x5d4037).setDepth(2);
+        this.add.rectangle(item.x, item.y + 8, 44, 34, item.color).setDepth(2).setStrokeStyle(2, 0x2b1d0e);
+        break;
+      case 'lantern':
+        this.add.circle(item.x, item.y, 22, item.color, 0.25).setDepth(2);
+        this.add.circle(item.x, item.y, 10, item.color).setDepth(3).setStrokeStyle(2, 0x2b1d0e);
+        break;
+      case 'trophyCase':
+        this.add.rectangle(item.x, item.y, 46, 60, 0x6d4c41).setDepth(2).setStrokeStyle(2, 0x2b1d0e);
+        this.add.rectangle(item.x, item.y + 8, 20, 26, item.color).setDepth(3);
+        break;
+    }
   }
 
   private isShelfUnlocked(pos: ShelfPosition): boolean {
@@ -183,7 +228,8 @@ export default class ShopScene extends Phaser.Scene {
     if (this.cursors.down?.isDown || this.wasd.down.isDown) vy += 1;
     const vec = new Phaser.Math.Vector2(vx, vy);
     if (vec.length() > 0) vec.normalize();
-    body.setVelocity(vec.x * PLAYER_SPEED, vec.y * PLAYER_SPEED);
+    const speed = gameState.moveSpeed;
+    body.setVelocity(vec.x * speed, vec.y * speed);
   }
 
   private handleDoorTrigger() {

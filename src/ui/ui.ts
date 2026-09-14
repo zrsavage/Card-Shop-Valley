@@ -1,4 +1,4 @@
-import { gameState, bus, WEAPON_TIER_DAMAGE_BONUS, VITALITY_TIER_HP_BONUS, SEASONS, ENERGY_TONIC_COST, ENERGY_TONIC_RESTORE, BAG_TIER_CAPACITY_BONUS, type DaySummary } from '../game/state';
+import { gameState, bus, WEAPON_TIER_DAMAGE_BONUS, VITALITY_TIER_HP_BONUS, SPEED_TIER_BONUS, SEASONS, ENERGY_TONIC_COST, ENERGY_TONIC_RESTORE, BAG_TIER_CAPACITY_BONUS, type DaySummary } from '../game/state';
 import { PACKS, openPack, type PackDefinition } from '../game/packs';
 import { RARITIES, RARITY_LABELS, RARITY_BASE_VALUE, SEASON_PRICE_MULTIPLIER } from '../game/cards';
 import { NPCS, friendshipTier, FRIENDSHIP_TIER_LABELS } from '../game/npcs';
@@ -7,9 +7,11 @@ import { SEASON_SET_NAME, SEASON_CARD_POOL, STAGE_VALUE_MULTIPLIER, type Species
 import { ZONE_DEFS } from '../game/combat';
 import { LEGACY_MILESTONES, LEGACY_CAPSTONE, type LegacyMilestone } from '../game/legacy';
 import { priceReactionFor } from '../game/pricing';
-import { playCardPop, playPackOpen, playLegendary, playChime, playError } from '../game/audio';
-import type { Card, ShopUpgrades, TownUpgrades, CombatUpgrades, Season, Rarity, BoardObjective, MerchantOffer } from '../game/types';
+import { playCardPop, playPackOpen, playLegendary, playChime, playCoin, playError } from '../game/audio';
+import type { Card, ShopUpgrades, TownUpgrades, CombatUpgrades, MovementUpgrades, Season, Rarity, BoardObjective, MerchantOffer } from '../game/types';
 import { PRESTIGE_PERKS } from '../game/prestige';
+import { OUTFITS, type OutfitDef } from '../game/outfits';
+import { DECOR_ITEMS, type DecorDef } from '../game/decor';
 
 /** Rush cost is a steep premium over the overnight price — pay for
  * convenience, not a strictly better deal than waiting. */
@@ -178,6 +180,25 @@ const COMBAT_UPGRADE_DEFS: CombatUpgradeDef[] = [
     cost: 900,
     description: `+${VITALITY_TIER_HP_BONUS} more max HP.`,
     requiresKey: 'vitalityTier2',
+  },
+];
+
+interface MovementUpgradeDef {
+  key: keyof MovementUpgrades;
+  name: string;
+  cost: number;
+  description: string;
+  requiresKey?: keyof MovementUpgrades;
+}
+
+const MOVEMENT_UPGRADE_DEFS: MovementUpgradeDef[] = [
+  { key: 'speedTier1', name: 'Worn-in Boots', cost: 120, description: `+${SPEED_TIER_BONUS} move speed everywhere.` },
+  {
+    key: 'speedTier2',
+    name: 'Featherweight Boots',
+    cost: 350,
+    description: `+${SPEED_TIER_BONUS} more move speed.`,
+    requiresKey: 'speedTier1',
   },
 ];
 
@@ -634,6 +655,12 @@ function openTownHallModal() {
     return upgradeRowHtml(def.key, def.name, def.cost, def.description, owned, locked);
   }).join('');
 
+  const movementRows = MOVEMENT_UPGRADE_DEFS.map((def) => {
+    const owned = gameState.movementUpgrades[def.key];
+    const locked = !!def.requiresKey && !gameState.movementUpgrades[def.requiresKey];
+    return upgradeRowHtml(def.key, def.name, def.cost, def.description, owned, locked);
+  }).join('');
+
   renderModal(`
     <h2>Town Hall</h2>
     <p class="modal-sub">Invest your gold back into the town.</p>
@@ -645,6 +672,9 @@ function openTownHallModal() {
     <h2 class="modal-section-title">Adventuring Upgrades</h2>
     <p class="modal-sub">Attack: ${gameState.attackDamage} &middot; Max HP: ${gameState.maxHp}</p>
     <div class="pack-list">${combatRows}</div>
+    <h2 class="modal-section-title">Movement Upgrades</h2>
+    <p class="modal-sub">Move speed: ${gameState.moveSpeed}</p>
+    <div class="pack-list">${movementRows}</div>
     <button class="btn btn-secondary close-btn">Close</button>
   `);
 
@@ -658,11 +688,14 @@ function openTownHallModal() {
   modalLayer.querySelectorAll<HTMLButtonElement>('.buy-upgrade-btn').forEach((btn) => {
     btn.addEventListener('click', () => {
       const townDef = TOWN_UPGRADE_DEFS.find((d) => d.key === btn.dataset.key);
+      const combatDef = COMBAT_UPGRADE_DEFS.find((d) => d.key === btn.dataset.key);
+      const movementDef = MOVEMENT_UPGRADE_DEFS.find((d) => d.key === btn.dataset.key);
       if (townDef) {
         gameState.purchaseTownUpgrade(townDef.key, townDef.cost);
-      } else {
-        const combatDef = COMBAT_UPGRADE_DEFS.find((d) => d.key === btn.dataset.key)!;
+      } else if (combatDef) {
         gameState.purchaseCombatUpgrade(combatDef.key, combatDef.cost);
+      } else if (movementDef) {
+        gameState.purchaseMovementUpgrade(movementDef.key, movementDef.cost);
       }
       openTownHallModal();
     });
@@ -753,6 +786,86 @@ function openMerchantModal() {
       }
       playChime();
       openMerchantModal();
+    });
+  });
+  modalLayer.querySelector('.close-btn')!.addEventListener('click', closeModal);
+}
+
+// --- Customize (outfits + shop decor — pure cosmetics, no gameplay effect) ---
+
+function outfitRowHtml(outfit: OutfitDef): string {
+  const owned = gameState.ownedOutfits.includes(outfit.id);
+  const equipped = gameState.equippedOutfitId === outfit.id;
+  let actionHtml: string;
+  if (equipped) {
+    actionHtml = `<button class="btn btn-small" disabled>Equipped</button>`;
+  } else if (owned) {
+    actionHtml = `<button class="btn btn-small equip-outfit-btn" data-id="${outfit.id}">Equip</button>`;
+  } else {
+    actionHtml = `<button class="btn btn-small buy-outfit-btn" data-id="${outfit.id}" ${gameState.gold < outfit.cost ? 'disabled' : ''}>${outfit.cost}g</button>`;
+  }
+  return `
+    <div class="pack-row${equipped ? ' outfit-row-equipped' : ''}">
+      <div class="pack-swatch outfit-swatch" style="background:${colorToCss(outfit.color)}"></div>
+      <div class="pack-info">
+        <div class="pack-name">${outfit.name}</div>
+        <div class="pack-meta">${outfit.description}</div>
+      </div>
+      ${actionHtml}
+    </div>
+  `;
+}
+
+function decorRowHtml(item: DecorDef): string {
+  const owned = gameState.ownedDecor.includes(item.id);
+  const actionHtml = owned
+    ? `<span class="board-claimed-tag">&#10003; Placed</span>`
+    : `<button class="btn btn-small buy-decor-btn" data-id="${item.id}" ${gameState.gold < item.cost ? 'disabled' : ''}>${item.cost}g</button>`;
+  return `
+    <div class="pack-row">
+      <div class="pack-swatch" style="background:${colorToCss(item.color)}"></div>
+      <div class="pack-info">
+        <div class="pack-name">${item.name}</div>
+        <div class="pack-meta">${item.description}</div>
+      </div>
+      ${actionHtml}
+    </div>
+  `;
+}
+
+function openCustomizeModal() {
+  renderModal(`
+    <h2>Customize</h2>
+    <p class="modal-sub">Spend gold on how you look and how your shop feels — pure style, no gameplay effect.</p>
+    <h2 class="modal-section-title">Outfits</h2>
+    <div class="pack-list">${OUTFITS.map(outfitRowHtml).join('')}</div>
+    <h2 class="modal-section-title">Shop Decorations</h2>
+    <div class="pack-list">${DECOR_ITEMS.map(decorRowHtml).join('')}</div>
+    <button class="btn btn-secondary close-btn">Close</button>
+  `);
+
+  modalLayer.querySelectorAll<HTMLButtonElement>('.buy-outfit-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const outfit = OUTFITS.find((o) => o.id === btn.dataset.id)!;
+      if (!gameState.purchaseOutfit(outfit.id, outfit.cost)) return;
+      gameState.equipOutfit(outfit.id);
+      playCoin();
+      openCustomizeModal();
+    });
+  });
+  modalLayer.querySelectorAll<HTMLButtonElement>('.equip-outfit-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      gameState.equipOutfit(btn.dataset.id!);
+      playChime();
+      openCustomizeModal();
+    });
+  });
+  modalLayer.querySelectorAll<HTMLButtonElement>('.buy-decor-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const item = DECOR_ITEMS.find((d) => d.id === btn.dataset.id)!;
+      if (!gameState.purchaseDecor(item.id, item.cost)) return;
+      playCoin();
+      openCustomizeModal();
     });
   });
   modalLayer.querySelector('.close-btn')!.addEventListener('click', closeModal);
@@ -1091,6 +1204,7 @@ export function initUI() {
       <button id="bag-btn" class="btn btn-small">&#127890; Bag (<span id="bag-count">${gameState.inventory.length}/${gameState.bagCapacity}</span>)</button>
       <button id="encyclopedia-btn" class="btn btn-small">&#128214; Cards</button>
       <button id="legacy-btn" class="btn btn-small">&#127942; Legacy</button>
+      <button id="customize-btn" class="btn btn-small">&#127912; Customize</button>
       <button id="end-day-btn" class="btn btn-small">End Day</button>
     </div>
     <div id="modal-layer"></div>
@@ -1106,6 +1220,7 @@ export function initUI() {
     openEncyclopediaModal();
   });
   document.getElementById('legacy-btn')!.addEventListener('click', openLegacyModal);
+  document.getElementById('customize-btn')!.addEventListener('click', openCustomizeModal);
 
   renderSeasonBadge();
 
@@ -1134,12 +1249,21 @@ export function initUI() {
       const def =
         SHOP_UPGRADE_DEFS.find((d) => d.key === btn.dataset.key) ??
         TOWN_UPGRADE_DEFS.find((d) => d.key === btn.dataset.key) ??
-        COMBAT_UPGRADE_DEFS.find((d) => d.key === btn.dataset.key);
+        COMBAT_UPGRADE_DEFS.find((d) => d.key === btn.dataset.key) ??
+        MOVEMENT_UPGRADE_DEFS.find((d) => d.key === btn.dataset.key);
       if (def) btn.disabled = gold < def.cost;
     });
     modalLayer.querySelectorAll<HTMLButtonElement>('.unlock-zone-btn').forEach((btn) => {
       const zone = ZONE_DEFS.find((z) => z.id === btn.dataset.zone);
       if (zone) btn.disabled = gold < zone.unlockCost;
+    });
+    modalLayer.querySelectorAll<HTMLButtonElement>('.buy-outfit-btn').forEach((btn) => {
+      const outfit = OUTFITS.find((o) => o.id === btn.dataset.id);
+      if (outfit) btn.disabled = gold < outfit.cost;
+    });
+    modalLayer.querySelectorAll<HTMLButtonElement>('.buy-decor-btn').forEach((btn) => {
+      const item = DECOR_ITEMS.find((d) => d.id === btn.dataset.id);
+      if (item) btn.disabled = gold < item.cost;
     });
   });
   bus.on('day-changed', (day: number) => {

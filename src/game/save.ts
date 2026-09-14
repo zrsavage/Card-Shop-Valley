@@ -1,5 +1,15 @@
 import { gameState, bus } from './state';
-import type { Card, ShelfSlot, ShopUpgrades, TownUpgrades, CombatUpgrades, NpcState, BoardObjective, MerchantVisit } from './types';
+import type {
+  Card,
+  ShelfSlot,
+  ShopUpgrades,
+  TownUpgrades,
+  CombatUpgrades,
+  MovementUpgrades,
+  NpcState,
+  BoardObjective,
+  MerchantVisit,
+} from './types';
 
 const SAVE_KEY = 'card-shop-valley-save-v1';
 
@@ -11,6 +21,7 @@ interface SaveData {
   shopUpgrades: ShopUpgrades;
   townUpgrades: TownUpgrades;
   combatUpgrades: CombatUpgrades;
+  movementUpgrades: MovementUpgrades;
   npcs: Record<string, NpcState>;
   ownedPacks: string[];
   pendingPacks: string[];
@@ -27,6 +38,9 @@ interface SaveData {
   shinyCharmActive: boolean;
   prestigeLevel: number;
   prestigePerks: string[];
+  ownedOutfits: string[];
+  equippedOutfitId: string;
+  ownedDecor: string[];
 }
 
 export function saveGame() {
@@ -55,6 +69,10 @@ export function saveGame() {
       shinyCharmActive: gameState.shinyCharmActive,
       prestigeLevel: gameState.prestigeLevel,
       prestigePerks: gameState.prestigePerks,
+      movementUpgrades: gameState.movementUpgrades,
+      ownedOutfits: gameState.ownedOutfits,
+      equippedOutfitId: gameState.equippedOutfitId,
+      ownedDecor: gameState.ownedDecor,
     };
     localStorage.setItem(SAVE_KEY, JSON.stringify(data));
   } catch {
@@ -84,6 +102,7 @@ export function loadGame(): boolean {
     if (data.shopUpgrades) Object.assign(gameState.shopUpgrades, data.shopUpgrades);
     if (data.townUpgrades) Object.assign(gameState.townUpgrades, data.townUpgrades);
     if (data.combatUpgrades) Object.assign(gameState.combatUpgrades, data.combatUpgrades);
+    if (data.movementUpgrades) Object.assign(gameState.movementUpgrades, data.movementUpgrades);
     if (data.npcs) {
       for (const [id, npcState] of Object.entries(data.npcs)) {
         if (gameState.npcs[id]) gameState.npcs[id] = npcState;
@@ -104,6 +123,9 @@ export function loadGame(): boolean {
     if (typeof data.shinyCharmActive === 'boolean') gameState.shinyCharmActive = data.shinyCharmActive;
     if (typeof data.prestigeLevel === 'number') gameState.prestigeLevel = data.prestigeLevel;
     if (Array.isArray(data.prestigePerks)) gameState.prestigePerks = data.prestigePerks;
+    if (Array.isArray(data.ownedOutfits)) gameState.ownedOutfits = data.ownedOutfits;
+    if (typeof data.equippedOutfitId === 'string') gameState.equippedOutfitId = data.equippedOutfitId;
+    if (Array.isArray(data.ownedDecor)) gameState.ownedDecor = data.ownedDecor;
     return true;
   } catch {
     return false;
@@ -144,4 +166,6 @@ export function initAutosave() {
   bus.on('merchant-changed', queueSave);
   bus.on('board-progress-changed', queueSave);
   bus.on('prestige', queueSave);
+  bus.on('movement-upgrades-changed', queueSave);
+  bus.on('cosmetics-changed', queueSave);
 }

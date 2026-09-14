@@ -48,6 +48,11 @@ export interface CombatUpgrades {
   vitalityTier3: boolean;
 }
 
+export interface MovementUpgrades {
+  speedTier1: boolean;
+  speedTier2: boolean;
+}
+
 /** What an NPC currently wants gifted — season + rarity, not a specific
  * card, so it's a real target without being frustratingly narrow. */
 export interface CardRequest {

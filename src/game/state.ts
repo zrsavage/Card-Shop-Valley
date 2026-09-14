@@ -6,6 +6,7 @@ import type {
   ShopUpgrades,
   TownUpgrades,
   CombatUpgrades,
+  MovementUpgrades,
   NpcState,
   CardRequest,
   Rarity,
@@ -19,6 +20,8 @@ import { SEASON_CARD_POOL } from './species';
 import { rollTownBoard } from './townBoard';
 import { rollMerchantOffers, MERCHANT_VISIT_CHANCE } from './merchant';
 import { PRESTIGE_PERKS } from './prestige';
+import { OUTFITS } from './outfits';
+import { DECOR_ITEMS } from './decor';
 
 export const bus = new Phaser.Events.EventEmitter();
 
@@ -30,6 +33,9 @@ export const PLAYER_BASE_ATTACK_DAMAGE = 14;
 export const WEAPON_TIER_DAMAGE_BONUS = 6;
 export const PLAYER_BASE_MAX_HP = 100;
 export const VITALITY_TIER_HP_BONUS = 40;
+
+export const PLAYER_BASE_SPEED = 240;
+export const SPEED_TIER_BONUS = 30;
 
 export const PLAYER_MAX_ENERGY = 100;
 // Passive drain: a full day's energy (idling in Town/Shop) lasts ~5 minutes.
@@ -123,6 +129,13 @@ function defaultCombatUpgrades(): CombatUpgrades {
   };
 }
 
+function defaultMovementUpgrades(): MovementUpgrades {
+  return {
+    speedTier1: false,
+    speedTier2: false,
+  };
+}
+
 function defaultNpcStates(): Record<string, NpcState> {
   const record: Record<string, NpcState> = {};
   for (const npc of NPCS) {
@@ -144,7 +157,14 @@ class GameState {
   shopUpgrades: ShopUpgrades = defaultShopUpgrades();
   townUpgrades: TownUpgrades = defaultTownUpgrades();
   combatUpgrades: CombatUpgrades = defaultCombatUpgrades();
+  movementUpgrades: MovementUpgrades = defaultMovementUpgrades();
   npcs: Record<string, NpcState> = defaultNpcStates();
+
+  /** Cosmetic only — never touched by prestige, unlike the upgrade fields
+   * above. The starting outfit is free and always owned. */
+  ownedOutfits: string[] = ['default'];
+  equippedOutfitId = 'default';
+  ownedDecor: string[] = [];
 
   paused = false;
   goldEarnedToday = 0;
@@ -225,6 +245,15 @@ class GameState {
 
   get isExhausted(): boolean {
     return this.energy <= 0;
+  }
+
+  get moveSpeed(): number {
+    const tiers = [this.movementUpgrades.speedTier1, this.movementUpgrades.speedTier2].filter(Boolean).length;
+    return PLAYER_BASE_SPEED + tiers * SPEED_TIER_BONUS;
+  }
+
+  get equippedOutfitColor(): number {
+    return (OUTFITS.find((o) => o.id === this.equippedOutfitId) ?? OUTFITS[0]).color;
   }
 
   get bagCapacity(): number {
@@ -389,6 +418,39 @@ class GameState {
     return true;
   }
 
+  purchaseMovementUpgrade(key: keyof MovementUpgrades, cost: number): boolean {
+    if (this.movementUpgrades[key]) return false;
+    if (!this.spendGold(cost)) return false;
+    this.movementUpgrades[key] = true;
+    bus.emit('movement-upgrades-changed', this.movementUpgrades);
+    return true;
+  }
+
+  purchaseOutfit(id: string, cost: number): boolean {
+    if (!OUTFITS.some((o) => o.id === id)) return false;
+    if (this.ownedOutfits.includes(id)) return false;
+    if (!this.spendGold(cost)) return false;
+    this.ownedOutfits.push(id);
+    bus.emit('cosmetics-changed');
+    return true;
+  }
+
+  equipOutfit(id: string): boolean {
+    if (!this.ownedOutfits.includes(id)) return false;
+    this.equippedOutfitId = id;
+    bus.emit('cosmetics-changed');
+    return true;
+  }
+
+  purchaseDecor(id: string, cost: number): boolean {
+    if (!DECOR_ITEMS.some((d) => d.id === id)) return false;
+    if (this.ownedDecor.includes(id)) return false;
+    if (!this.spendGold(cost)) return false;
+    this.ownedDecor.push(id);
+    bus.emit('cosmetics-changed');
+    return true;
+  }
+
   unlockZone(zoneId: string, cost: number): boolean {
     if (this.unlockedZones.includes(zoneId)) return false;
     if (!this.spendGold(cost)) return false;
@@ -539,6 +601,7 @@ class GameState {
     this.shopUpgrades = defaultShopUpgrades();
     this.townUpgrades = defaultTownUpgrades();
     this.combatUpgrades = defaultCombatUpgrades();
+    this.movementUpgrades = defaultMovementUpgrades();
     this.npcs = defaultNpcStates();
     this.ownedPacks = [];
     this.pendingPacks = [];
@@ -563,6 +626,7 @@ class GameState {
     bus.emit('shop-upgrades-changed', this.shopUpgrades);
     bus.emit('town-upgrades-changed', this.townUpgrades);
     bus.emit('combat-upgrades-changed', this.combatUpgrades);
+    bus.emit('movement-upgrades-changed', this.movementUpgrades);
     bus.emit('hp-changed', this.hp);
     bus.emit('energy-changed', this.energy);
     bus.emit('packs-changed', this.ownedPacks);

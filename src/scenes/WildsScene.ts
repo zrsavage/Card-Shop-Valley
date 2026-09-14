@@ -7,7 +7,6 @@ import { WILDS_FROM_TOWN_POS, WILDS_TO_TOWN_TRIGGER } from '../game/layout';
 import { humanoidTextureKey, monsterTextureKey, attachCircleBody } from '../game/pixelArt';
 import { playHit, playPlayerHurt, playLegendary } from '../game/audio';
 
-const PLAYER_SPEED = 240;
 const MELEE_RANGE = 85;
 const ATTACK_COOLDOWN_MS = 400;
 const CONTACT_DAMAGE_COOLDOWN_MS = 900;
@@ -80,7 +79,7 @@ export default class WildsScene extends Phaser.Scene {
 
     gameState.healFully();
 
-    const playerTexture = humanoidTextureKey(this, 0xffb703, 32);
+    const playerTexture = humanoidTextureKey(this, gameState.equippedOutfitColor, 32);
     this.player = this.add.sprite(WILDS_FROM_TOWN_POS.x, WILDS_FROM_TOWN_POS.y, playerTexture).setDepth(5);
     this.physics.add.existing(this.player);
     attachCircleBody(this.player, 16);
@@ -105,13 +104,19 @@ export default class WildsScene extends Phaser.Scene {
     for (let i = 0; i < 3; i++) this.spawnEnemy();
 
     bus.on('paused-changed', this.onPausedChanged, this);
+    bus.on('cosmetics-changed', this.onCosmeticsChanged, this);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       bus.off('paused-changed', this.onPausedChanged, this);
+      bus.off('cosmetics-changed', this.onCosmeticsChanged, this);
     });
   }
 
   private onPausedChanged(paused: boolean) {
     if (paused) (this.player.body as Phaser.Physics.Arcade.Body).setVelocity(0, 0);
+  }
+
+  private onCosmeticsChanged() {
+    this.player.setTexture(humanoidTextureKey(this, gameState.equippedOutfitColor, 32));
   }
 
   update(time: number, delta: number) {
@@ -146,7 +151,7 @@ export default class WildsScene extends Phaser.Scene {
     if (this.cursors.down?.isDown || this.wasd.down.isDown) vy += 1;
     const vec = new Phaser.Math.Vector2(vx, vy);
     if (vec.length() > 0) vec.normalize();
-    const speed = gameState.isExhausted ? PLAYER_SPEED * EXHAUSTED_SPEED_MULTIPLIER : PLAYER_SPEED;
+    const speed = gameState.isExhausted ? gameState.moveSpeed * EXHAUSTED_SPEED_MULTIPLIER : gameState.moveSpeed;
     body.setVelocity(vec.x * speed, vec.y * speed);
   }
 

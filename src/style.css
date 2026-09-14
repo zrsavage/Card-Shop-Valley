@@ -989,3 +989,14 @@ html, body {
 .prestige-btn {
   background: linear-gradient(90deg, #ffd166, #ff9f1c);
 }
+
+/* --- Customize: outfits + shop decorations --- */
+
+.outfit-swatch {
+  border-radius: 50%;
+}
+
+.outfit-row-equipped {
+  outline: 2px solid #2b8a3e;
+  background: #e3f2e1;
+}

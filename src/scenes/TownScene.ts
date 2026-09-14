@@ -15,7 +15,6 @@ import type { Season } from '../game/types';
 import { humanoidTextureKey, attachCircleBody } from '../game/pixelArt';
 
 const INTERACT_RANGE = 70;
-const PLAYER_SPEED = 240;
 
 const GROUND_TINTS: Record<Season, number> = {
   Spring: 0x8bc34a,
@@ -106,7 +105,7 @@ export default class TownScene extends Phaser.Scene {
 
     // Player — arrives at the door leading back from wherever they came from.
     const spawnPos = data?.from === 'wilds' ? TOWN_FROM_WILDS_POS : TOWN_SHOP_DOOR_POS;
-    const playerTexture = humanoidTextureKey(this, 0xffb703, 32);
+    const playerTexture = humanoidTextureKey(this, gameState.equippedOutfitColor, 32);
     this.player = this.add.sprite(spawnPos.x, spawnPos.y, playerTexture).setDepth(5);
     this.physics.add.existing(this.player);
     attachCircleBody(this.player, 16);
@@ -136,6 +135,7 @@ export default class TownScene extends Phaser.Scene {
     bus.on('day-changed', this.onDayChanged, this);
     bus.on('enter-wilds', this.onEnterWilds, this);
     bus.on('merchant-changed', this.updateMerchantVisibility, this);
+    bus.on('cosmetics-changed', this.onCosmeticsChanged, this);
 
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       bus.off('paused-changed', this.onPausedChanged, this);
@@ -143,7 +143,12 @@ export default class TownScene extends Phaser.Scene {
       bus.off('day-changed', this.onDayChanged, this);
       bus.off('enter-wilds', this.onEnterWilds, this);
       bus.off('merchant-changed', this.updateMerchantVisibility, this);
+      bus.off('cosmetics-changed', this.onCosmeticsChanged, this);
     });
+  }
+
+  private onCosmeticsChanged() {
+    this.player.setTexture(humanoidTextureKey(this, gameState.equippedOutfitColor, 32));
   }
 
   private updateMerchantVisibility() {
@@ -203,7 +208,8 @@ export default class TownScene extends Phaser.Scene {
     if (this.cursors.down?.isDown || this.wasd.down.isDown) vy += 1;
     const vec = new Phaser.Math.Vector2(vx, vy);
     if (vec.length() > 0) vec.normalize();
-    body.setVelocity(vec.x * PLAYER_SPEED, vec.y * PLAYER_SPEED);
+    const speed = gameState.moveSpeed;
+    body.setVelocity(vec.x * speed, vec.y * speed);
   }
 
   private handleDoorTrigger() {
