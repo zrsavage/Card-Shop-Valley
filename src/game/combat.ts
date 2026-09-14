@@ -109,6 +109,57 @@ const FROSTBACK_ENEMIES: EnemyDef[] = [
 /** Backward-compatible alias — the Bramble Wilds' own enemy roster. */
 export const ENEMY_DEFS: EnemyDef[] = BRAMBLE_ENEMIES;
 
+export interface ZoneBossDef extends EnemyDef {
+  /** Flat gold awarded on top of its (guaranteed) pack drop. */
+  bonusGold: number;
+}
+
+/** How many regular kills in a single Wilds visit before the zone's boss
+ * shows up — a build-up-and-payoff beat instead of just an endless grind. */
+export const BOSS_KILL_THRESHOLD = 6;
+
+const ZONE_BOSSES: Record<string, ZoneBossDef> = {
+  bramble: {
+    id: 'bramble-boss',
+    name: 'Elder Bramblehorn',
+    color: 0x6a4c93,
+    maxHp: 220,
+    damage: 18,
+    speed: 50,
+    aggroRange: 220,
+    radius: 30,
+    packDropChance: 1,
+    packWeights: { starter: 0, deluxe: 60, mythic: 40 },
+    bonusGold: 150,
+  },
+  hollow: {
+    id: 'hollow-boss',
+    name: 'The Bog Mother',
+    color: 0x1b4332,
+    maxHp: 380,
+    damage: 26,
+    speed: 45,
+    aggroRange: 240,
+    radius: 34,
+    packDropChance: 1,
+    packWeights: { starter: 0, deluxe: 30, mythic: 70 },
+    bonusGold: 300,
+  },
+  frostback: {
+    id: 'frostback-boss',
+    name: 'Glacial Sovereign',
+    color: 0xa2d2ff,
+    maxHp: 600,
+    damage: 38,
+    speed: 40,
+    aggroRange: 260,
+    radius: 40,
+    packDropChance: 1,
+    packWeights: { starter: 0, deluxe: 0, mythic: 100 },
+    bonusGold: 600,
+  },
+};
+
 export interface ZoneDef {
   id: string;
   name: string;
@@ -116,6 +167,7 @@ export interface ZoneDef {
   /** Gold cost to unlock; 0 for the always-available starting zone. */
   unlockCost: number;
   enemies: EnemyDef[];
+  boss: ZoneBossDef;
   maxEnemies: number;
   spawnIntervalRange: [number, number];
   /** Visual identity so each zone reads as a different place, not just a
@@ -132,6 +184,7 @@ export const ZONE_DEFS: ZoneDef[] = [
     description: 'The wilds just past town. Easy pickings, mostly Starter and Deluxe packs.',
     unlockCost: 0,
     enemies: BRAMBLE_ENEMIES,
+    boss: ZONE_BOSSES.bramble,
     maxEnemies: 6,
     spawnIntervalRange: [2500, 5000],
     cameraBg: '#243318',
@@ -144,6 +197,7 @@ export const ZONE_DEFS: ZoneDef[] = [
     description: 'Tougher foes further out, with more enemies at once and better pack odds.',
     unlockCost: 500,
     enemies: HOLLOW_ENEMIES,
+    boss: ZONE_BOSSES.hollow,
     maxEnemies: 8,
     spawnIntervalRange: [1800, 3800],
     cameraBg: '#161f16',
@@ -156,6 +210,7 @@ export const ZONE_DEFS: ZoneDef[] = [
     description: 'The hardest ground — dense, dangerous, and heavily favors Mythic packs.',
     unlockCost: 1500,
     enemies: FROSTBACK_ENEMIES,
+    boss: ZONE_BOSSES.frostback,
     maxEnemies: 10,
     spawnIntervalRange: [1500, 3000],
     cameraBg: '#14212a',

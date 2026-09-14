@@ -925,3 +925,67 @@ html, body {
   color: #d98c00;
   margin-top: 2px;
 }
+
+/* --- Seasonal scarcity, reputation, and set-completion --- */
+
+.season-countdown {
+  font-weight: 700;
+  color: #6d4c41;
+}
+
+.season-countdown-urgent {
+  color: #c92a2a;
+}
+
+.reputation-line {
+  margin-bottom: 0;
+}
+
+.set-complete-badge {
+  display: inline-block;
+  font-size: 12px;
+  font-weight: 700;
+  color: #2b1d0e;
+  background: linear-gradient(90deg, #ffd166, #fff3b0);
+  border: 2px solid #d9a92e;
+  border-radius: 8px;
+  padding: 4px 10px;
+  margin-bottom: 10px;
+}
+
+/* --- Town Board --- */
+
+.board-claimed-tag {
+  font-size: 12px;
+  font-weight: 700;
+  color: #2b8a3e;
+  white-space: nowrap;
+}
+
+/* --- Traveling merchant --- */
+
+.merchant-visit-tag {
+  color: #d98c00;
+}
+
+.merchant-banner {
+  background: #ffb703;
+  color: #2b1d0e;
+}
+
+/* --- Prestige --- */
+
+.prestige-perk-list {
+  margin: 0 0 12px;
+  padding-left: 20px;
+  font-size: 13px;
+  color: #6d4c41;
+}
+
+.prestige-perk-list li {
+  margin-bottom: 4px;
+}
+
+.prestige-btn {
+  background: linear-gradient(90deg, #ffd166, #ff9f1c);
+}

@@ -68,6 +68,17 @@ function tweenTo(scene: Phaser.Scene, target: Phaser.GameObjects.Sprite, x: numb
   });
 }
 
+/** Higher shop reputation unlocks customer archetypes beyond the default
+ * browse-or-buy visitor — a big spender who barely blinks at a markup, or a
+ * bulk buyer who checks nearly every shelf instead of just one or two. */
+function rollArchetype(): 'normal' | 'bulkBuyer' | 'bigSpender' {
+  const tier = gameState.reputationTier;
+  const roll = Math.random();
+  if (roll < tier.bigSpenderChance) return 'bigSpender';
+  if (roll < tier.bigSpenderChance + tier.bulkBuyerChance) return 'bulkBuyer';
+  return 'normal';
+}
+
 export function spawnCustomer(scene: Phaser.Scene, stockedShelves: ShelfTarget[]) {
   if (stockedShelves.length === 0) return;
   const color = Phaser.Utils.Array.GetRandom(CUSTOMER_COLORS);
@@ -75,8 +86,15 @@ export function spawnCustomer(scene: Phaser.Scene, stockedShelves: ShelfTarget[]
   const sprite = scene.add.sprite(CUSTOMER_DOOR_POS.x, CUSTOMER_DOOR_POS.y, texture).setDepth(4);
   (sprite as any).__customer = true;
 
-  const browseOnly = Math.random() < BROWSE_ONLY_CHANCE;
-  const visitPlan = Phaser.Utils.Array.Shuffle([...stockedShelves]).slice(0, browseOnly ? 1 : rollVisitCount());
+  const archetype = rollArchetype();
+  if (archetype !== 'normal') {
+    const label = archetype === 'bigSpender' ? 'Big Spender!' : 'Bulk Buyer!';
+    showFloatingText(scene, sprite.x, sprite.y - 40, label, '#ffd166', 1300);
+  }
+
+  const browseOnly = archetype === 'normal' && Math.random() < BROWSE_ONLY_CHANCE;
+  const visitCount = archetype === 'bulkBuyer' ? Math.min(stockedShelves.length, 4) : rollVisitCount();
+  const visitPlan = Phaser.Utils.Array.Shuffle([...stockedShelves]).slice(0, browseOnly ? 1 : visitCount);
   let boughtAnything = false;
 
   function visit(i: number) {
@@ -112,7 +130,11 @@ export function spawnCustomer(scene: Phaser.Scene, stockedShelves: ShelfTarget[]
     showSpeechText(scene, sprite.x, sprite.y - 20, pick(reaction.lines), reaction.color);
 
     scene.time.delayedCall(DECIDE_PAUSE_MS, () => {
-      const buyChance = buyChanceFor(ratio, gameState.shopUpgrades.appraisersLoupe);
+      // A big spender reacts to the sticker price the same as anyone else
+      // (the speech line above is unaffected), but is far more forgiving
+      // when it actually comes to paying it.
+      const effectiveRatio = archetype === 'bigSpender' ? ratio * 0.6 : ratio;
+      const buyChance = buyChanceFor(effectiveRatio, gameState.shopUpgrades.appraisersLoupe);
       const willBuy = Math.random() < buyChance;
 
       if (willBuy) {

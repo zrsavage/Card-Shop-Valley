@@ -9,6 +9,7 @@ import {
   FOUNTAIN_RADIUS,
   TOWN_TO_WILDS_TRIGGER,
   TOWN_FROM_WILDS_POS,
+  MERCHANT_CART_POS,
 } from '../game/layout';
 import type { Season } from '../game/types';
 import { humanoidTextureKey, attachCircleBody } from '../game/pixelArt';
@@ -38,6 +39,8 @@ export default class TownScene extends Phaser.Scene {
   private npcVisuals: NpcVisual[] = [];
   private ground!: Phaser.GameObjects.Rectangle;
   private fountain!: Phaser.GameObjects.Arc;
+  private merchantVisuals: Phaser.GameObjects.GameObject[] = [];
+  private merchantLabel!: Phaser.GameObjects.Text;
 
   constructor() {
     super('Town');
@@ -77,6 +80,18 @@ export default class TownScene extends Phaser.Scene {
       .setOrigin(0.5)
       .setDepth(3);
     const townHallBody = this.physics.add.staticBody(TOWN_HALL_POS.x - 65, TOWN_HALL_POS.y - 50, 130, 100);
+
+    // Traveling merchant's cart — only visible on the days it's actually in town.
+    const cartWheelL = this.add.circle(MERCHANT_CART_POS.x - 24, MERCHANT_CART_POS.y + 16, 8, 0x2b1d0e).setDepth(3);
+    const cartWheelR = this.add.circle(MERCHANT_CART_POS.x + 24, MERCHANT_CART_POS.y + 16, 8, 0x2b1d0e).setDepth(3);
+    const cartBody = this.add.rectangle(MERCHANT_CART_POS.x, MERCHANT_CART_POS.y, 70, 40, 0x9c6644).setDepth(3).setStrokeStyle(3, 0x2b1d0e);
+    const cartRoof = this.add.rectangle(MERCHANT_CART_POS.x, MERCHANT_CART_POS.y - 26, 84, 12, 0xc1440e).setDepth(3);
+    this.merchantLabel = this.add
+      .text(MERCHANT_CART_POS.x, MERCHANT_CART_POS.y - 42, 'Merchant', { fontSize: '11px', color: '#fff8ec', backgroundColor: '#00000088', padding: { x: 4, y: 1 } })
+      .setOrigin(0.5)
+      .setDepth(4);
+    this.merchantVisuals = [cartWheelL, cartWheelR, cartBody, cartRoof, this.merchantLabel];
+    this.updateMerchantVisibility();
 
     // NPCs
     for (const npc of NPCS) {
@@ -120,13 +135,20 @@ export default class TownScene extends Phaser.Scene {
     bus.on('town-upgrades-changed', this.onTownUpgradesChanged, this);
     bus.on('day-changed', this.onDayChanged, this);
     bus.on('enter-wilds', this.onEnterWilds, this);
+    bus.on('merchant-changed', this.updateMerchantVisibility, this);
 
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       bus.off('paused-changed', this.onPausedChanged, this);
       bus.off('town-upgrades-changed', this.onTownUpgradesChanged, this);
       bus.off('day-changed', this.onDayChanged, this);
       bus.off('enter-wilds', this.onEnterWilds, this);
+      bus.off('merchant-changed', this.updateMerchantVisibility, this);
     });
+  }
+
+  private updateMerchantVisibility() {
+    const active = gameState.merchantVisit?.day === gameState.day;
+    for (const obj of this.merchantVisuals) (obj as Phaser.GameObjects.Rectangle).setVisible(active);
   }
 
   private onPausedChanged(paused: boolean) {
@@ -139,6 +161,7 @@ export default class TownScene extends Phaser.Scene {
 
   private onDayChanged() {
     this.ground.setFillStyle(GROUND_TINTS[gameState.season]);
+    this.updateMerchantVisibility();
   }
 
   private onEnterWilds() {
@@ -190,13 +213,15 @@ export default class TownScene extends Phaser.Scene {
     }
   }
 
-  private nearestInteractable(): { type: 'townhall' | 'npc' | 'wildsgate'; id?: string; x: number; y: number } | null {
-    const candidates: { type: 'townhall' | 'npc' | 'wildsgate'; id?: string; x: number; y: number }[] = [
+  private nearestInteractable(): { type: 'townhall' | 'npc' | 'wildsgate' | 'merchant'; id?: string; x: number; y: number } | null {
+    const merchantActive = gameState.merchantVisit?.day === gameState.day;
+    const candidates: { type: 'townhall' | 'npc' | 'wildsgate' | 'merchant'; id?: string; x: number; y: number }[] = [
       { type: 'townhall', x: TOWN_HALL_POS.x, y: TOWN_HALL_POS.y },
       { type: 'wildsgate', x: TOWN_TO_WILDS_TRIGGER.x, y: TOWN_TO_WILDS_TRIGGER.y },
       ...this.npcVisuals.map((v) => ({ type: 'npc' as const, id: v.id, x: v.sprite.x, y: v.sprite.y })),
+      ...(merchantActive ? [{ type: 'merchant' as const, x: MERCHANT_CART_POS.x, y: MERCHANT_CART_POS.y }] : []),
     ];
-    let best: { type: 'townhall' | 'npc' | 'wildsgate'; id?: string; x: number; y: number } | null = null;
+    let best: { type: 'townhall' | 'npc' | 'wildsgate' | 'merchant'; id?: string; x: number; y: number } | null = null;
     let bestDist = INTERACT_RANGE;
     for (const c of candidates) {
       const d = Phaser.Math.Distance.Between(this.player.x, this.player.y, c.x, c.y);
@@ -211,7 +236,14 @@ export default class TownScene extends Phaser.Scene {
   private handleInteract() {
     const target = this.nearestInteractable();
     if (target) {
-      const label = target.type === 'townhall' ? 'Press E: Town Hall' : target.type === 'wildsgate' ? 'Press E: Wilds' : `Press E: Talk`;
+      const label =
+        target.type === 'townhall'
+          ? 'Press E: Town Hall'
+          : target.type === 'wildsgate'
+            ? 'Press E: Wilds'
+            : target.type === 'merchant'
+              ? 'Press E: Merchant'
+              : `Press E: Talk`;
       this.promptText.setText(label).setPosition(target.x, target.y - 45).setVisible(true);
     } else {
       this.promptText.setVisible(false);
@@ -222,6 +254,8 @@ export default class TownScene extends Phaser.Scene {
         bus.emit('open-townhall');
       } else if (target.type === 'wildsgate') {
         bus.emit('open-zonemap');
+      } else if (target.type === 'merchant') {
+        bus.emit('open-merchant');
       } else {
         bus.emit('open-npc', target.id);
       }

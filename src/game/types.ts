@@ -60,3 +60,30 @@ export interface NpcState {
   lastTalkedDay: number;
   request: CardRequest | null;
 }
+
+/** A daily Town Board objective — tracked against a same-day counter on
+ * gameState, rerolled fresh (unclaimed rewards lost) whenever the day ends. */
+export interface BoardObjective {
+  id: string;
+  description: string;
+  metric: 'cardsSold' | 'enemiesDefeated' | 'giftsGiven' | 'packsOpened' | 'goldEarned';
+  target: number;
+  reward: number;
+  claimed: boolean;
+}
+
+export type MerchantOfferKind = 'rareBundle' | 'shinyCharm' | 'mythicCloseout';
+
+export interface MerchantOffer {
+  id: string;
+  kind: MerchantOfferKind;
+  name: string;
+  description: string;
+  cost: number;
+  purchased: boolean;
+}
+
+export interface MerchantVisit {
+  day: number;
+  offers: MerchantOffer[];
+}

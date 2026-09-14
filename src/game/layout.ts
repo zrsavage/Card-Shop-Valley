@@ -38,6 +38,10 @@ export const TOWN_HALL_POS = { x: 660, y: 200 };
 export const FOUNTAIN_POS = { x: 400, y: 300 };
 export const FOUNTAIN_RADIUS = 42;
 
+// Only occupied (and only interactable) on the days the traveling merchant
+// is actually in town.
+export const MERCHANT_CART_POS = { x: 400, y: 460 };
+
 // --- Town <-> Wilds path (left edge of town, clear of the NPC spots) ---
 export const TOWN_TO_WILDS_TRIGGER = { x: 36, y: 450 };
 export const TOWN_FROM_WILDS_POS = { x: 110, y: 450 };

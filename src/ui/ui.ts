@@ -8,7 +8,8 @@ import { ZONE_DEFS } from '../game/combat';
 import { LEGACY_MILESTONES, LEGACY_CAPSTONE, type LegacyMilestone } from '../game/legacy';
 import { priceReactionFor } from '../game/pricing';
 import { playCardPop, playPackOpen, playLegendary, playChime, playError } from '../game/audio';
-import type { Card, ShopUpgrades, TownUpgrades, CombatUpgrades, Season, Rarity } from '../game/types';
+import type { Card, ShopUpgrades, TownUpgrades, CombatUpgrades, Season, Rarity, BoardObjective, MerchantOffer } from '../game/types';
+import { PRESTIGE_PERKS } from '../game/prestige';
 
 /** Rush cost is a steep premium over the overnight price — pay for
  * convenience, not a strictly better deal than waiting. */
@@ -297,17 +298,32 @@ function openCounterModal() {
     `;
   }).join('');
 
+  const daysLeft = gameState.daysLeftInSeason;
+  const seasonWarning =
+    daysLeft <= 1
+      ? `<br><strong class="season-countdown-urgent">${daysLeft === 0 ? "Last day for this set!" : "1 day left for this set!"}</strong> ${SEASON_SET_NAME[gameState.season]} rotates out once the season ends.`
+      : `<br><span class="season-countdown">${daysLeft} days left</span> before ${SEASON_SET_NAME[gameState.season]} rotates out for the season.`;
+
+  const rep = gameState.reputationTier;
+  const nextRep = gameState.nextReputationTier;
+  const repLine = nextRep
+    ? `<strong>${rep.name}</strong> &middot; ${nextRep.minSales - gameState.lifetimeCardsSold} more lifetime sale${nextRep.minSales - gameState.lifetimeCardsSold === 1 ? '' : 's'} to reach ${nextRep.name}`
+    : `<strong>${rep.name}</strong> &middot; the shop's reputation is maxed out`;
+
   renderModal(`
     <h2>Pack Counter</h2>
     <p class="modal-sub">
       Now stocking <strong>${SEASON_SET_NAME[gameState.season]}</strong> — order a pack and it'll arrive tomorrow, or pay for Rush delivery to open it right now.
       ${multiplier !== 1 ? `<br><strong>${gameState.season} market:</strong> prices &times;${multiplier}.` : ''}
+      ${seasonWarning}
     </p>
     <div class="pack-list">${packRows}</div>
     <h2 class="modal-section-title">Your Packs</h2>
     ${ownedPacksHtml()}
     <h2 class="modal-section-title">Provisions</h2>
     <div class="pack-list">${provisionsHtml()}</div>
+    <h2 class="modal-section-title">Shop Reputation</h2>
+    <p class="modal-sub reputation-line">${repLine}</p>
     <h2 class="modal-section-title">Shop Upgrades</h2>
     <div class="pack-list">${shopUpgradesHtml()}</div>
     <button class="btn btn-secondary close-btn">Close</button>
@@ -336,7 +352,9 @@ function openCounterModal() {
         return;
       }
       if (!gameState.consumeOwnedPack(packId)) return;
-      const cards = openPack(pack, gameState.season);
+      gameState.notePackOpened();
+      const forceShinyOnce = gameState.consumeShinyCharm();
+      const cards = openPack(pack, gameState.season, { forceShinyOnce });
       openPackRevealModal(pack, cards);
     });
   });
@@ -581,6 +599,27 @@ function openDaySummaryModal(summary: DaySummary) {
   modalLayer.querySelector('.start-day-btn')!.addEventListener('click', closeModal);
 }
 
+// --- Town Board (daily objectives, posted at the Town Hall) ---
+
+function townBoardRowHtml(obj: BoardObjective): string {
+  const progress = Math.min(gameState.boardObjectiveProgress(obj), obj.target);
+  const done = progress >= obj.target;
+  const pct = (progress / obj.target) * 100;
+  const actionHtml = obj.claimed
+    ? `<span class="board-claimed-tag">&#10003; Claimed</span>`
+    : `<button class="btn btn-small claim-board-btn" data-id="${obj.id}" ${done ? '' : 'disabled'}>${done ? `Claim ${obj.reward}g` : `${obj.reward}g`}</button>`;
+  return `
+    <div class="legacy-row${done ? ' legacy-row-done' : ''}">
+      <div class="legacy-info">
+        <div class="legacy-name">${obj.description}</div>
+        <div class="legacy-bar"><div class="legacy-bar-fill" style="width:${pct}%"></div></div>
+        <div class="legacy-progress-label">${progress} / ${obj.target}</div>
+      </div>
+      ${actionHtml}
+    </div>
+  `;
+}
+
 // --- Town Hall ---
 
 function openTownHallModal() {
@@ -598,6 +637,10 @@ function openTownHallModal() {
   renderModal(`
     <h2>Town Hall</h2>
     <p class="modal-sub">Invest your gold back into the town.</p>
+    <h2 class="modal-section-title">Town Board — today's objectives</h2>
+    <p class="modal-sub">Rerolls at the end of every day — unclaimed rewards don't carry over.</p>
+    <div class="legacy-list">${gameState.townBoard.map(townBoardRowHtml).join('')}</div>
+    <h2 class="modal-section-title">Town Upgrades</h2>
     <div class="pack-list">${rows}</div>
     <h2 class="modal-section-title">Adventuring Upgrades</h2>
     <p class="modal-sub">Attack: ${gameState.attackDamage} &middot; Max HP: ${gameState.maxHp}</p>
@@ -605,6 +648,13 @@ function openTownHallModal() {
     <button class="btn btn-secondary close-btn">Close</button>
   `);
 
+  modalLayer.querySelectorAll<HTMLButtonElement>('.claim-board-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      if (!gameState.claimBoardObjective(btn.dataset.id!)) return;
+      playChime();
+      openTownHallModal();
+    });
+  });
   modalLayer.querySelectorAll<HTMLButtonElement>('.buy-upgrade-btn').forEach((btn) => {
     btn.addEventListener('click', () => {
       const townDef = TOWN_UPGRADE_DEFS.find((d) => d.key === btn.dataset.key);
@@ -659,6 +709,50 @@ function openZoneMapModal() {
       gameState.travelToZone(btn.dataset.zone!);
       closeModal();
       bus.emit('enter-wilds');
+    });
+  });
+  modalLayer.querySelector('.close-btn')!.addEventListener('click', closeModal);
+}
+
+// --- Traveling merchant ---
+
+function merchantOfferRowHtml(offer: MerchantOffer): string {
+  const actionHtml = offer.purchased
+    ? `<span class="board-claimed-tag">&#10003; Bought</span>`
+    : `<button class="btn btn-small buy-merchant-btn" data-id="${offer.id}" ${gameState.gold < offer.cost ? 'disabled' : ''}>${offer.cost}g</button>`;
+  return `
+    <div class="pack-row">
+      <div class="pack-info">
+        <div class="pack-name">${offer.name}</div>
+        <div class="pack-meta">${offer.description}</div>
+      </div>
+      ${actionHtml}
+    </div>
+  `;
+}
+
+function openMerchantModal() {
+  const visit = gameState.merchantVisit;
+  if (!visit || visit.day !== gameState.day) {
+    closeModal();
+    return;
+  }
+
+  renderModal(`
+    <h2>Traveling Merchant</h2>
+    <p class="modal-sub">Here for the day only — gone again tomorrow, whatever's left unsold.</p>
+    <div class="pack-list">${visit.offers.map(merchantOfferRowHtml).join('')}</div>
+    <button class="btn btn-secondary close-btn">Close</button>
+  `);
+
+  modalLayer.querySelectorAll<HTMLButtonElement>('.buy-merchant-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      if (!gameState.buyMerchantOffer(btn.dataset.id!)) {
+        playError();
+        return;
+      }
+      playChime();
+      openMerchantModal();
     });
   });
   modalLayer.querySelector('.close-btn')!.addEventListener('click', closeModal);
@@ -836,10 +930,18 @@ function openEncyclopediaModal() {
       `<button class="btn btn-small codex-tab-btn${season === encyclopediaSeason ? ' codex-tab-active' : ''}" data-season="${season}">${season}</button>`,
   ).join('');
   const { discovered, total } = seasonDiscoveryCount(encyclopediaSeason);
+  const seasonComplete = total > 0 && discovered >= total;
+  const setBonusHtml = seasonComplete
+    ? `<span class="set-complete-badge">&#10022; Set Complete — +5% sale price on everything, forever</span>`
+    : '';
+  const overallBonusPct = Math.round((gameState.saleGoldMultiplier - 1) * 100);
 
   renderModal(`
     <h2>Card Encyclopedia</h2>
-    <p class="modal-sub">Discovered <strong>${discovered}/${total}</strong> in ${SEASON_SET_NAME[encyclopediaSeason]}. Undiscovered cards show as "???" until you pull one — prices are rough estimates once found.</p>
+    <p class="modal-sub">Discovered <strong>${discovered}/${total}</strong> in ${SEASON_SET_NAME[encyclopediaSeason]}. Undiscovered cards show as "???" until you pull one — prices are rough estimates once found.
+    ${overallBonusPct > 0 ? `<br>Current sale-price bonus from completed sets and perks: <strong>+${overallBonusPct}%</strong>.` : ''}
+    </p>
+    ${setBonusHtml}
     <div class="codex-tabs">${tabs}</div>
     <input type="text" id="codex-search" class="codex-search" placeholder="Search by name..." value="${encyclopediaQuery}" />
     <div class="codex-list" id="codex-list">${encyclopediaBodyHtml()}</div>
@@ -884,9 +986,64 @@ function legacyRowHtml(m: LegacyMilestone, capstone = false): string {
   `;
 }
 
+function prestigePerksOwnedHtml(): string {
+  if (gameState.prestigePerks.length === 0) return '';
+  const counts = new Map<string, number>();
+  for (const id of gameState.prestigePerks) counts.set(id, (counts.get(id) ?? 0) + 1);
+  const rows = [...counts.entries()]
+    .map(([id, count]) => {
+      const def = PRESTIGE_PERKS.find((p) => p.id === id);
+      if (!def) return '';
+      return `<li>${def.name}${count > 1 ? ` &times;${count}` : ''} — ${def.description}</li>`;
+    })
+    .join('');
+  return `<ul class="prestige-perk-list">${rows}</ul>`;
+}
+
+function openPrestigeChoiceModal() {
+  const rows = PRESTIGE_PERKS.map(
+    (perk) => `
+    <div class="pack-row">
+      <div class="pack-info">
+        <div class="pack-name">${perk.name}</div>
+        <div class="pack-meta">${perk.description}</div>
+      </div>
+      <button class="btn btn-small choose-perk-btn" data-id="${perk.id}">Choose</button>
+    </div>
+  `,
+  ).join('');
+
+  renderModal(`
+    <h2>Begin Anew</h2>
+    <p class="modal-sub">
+      Pick a permanent perk. Your gold, shelves, upgrades, packs, and townsfolk friendships reset —
+      but the Encyclopedia, your lifetime stats, and every perk you've ever picked stay with you.
+    </p>
+    <div class="pack-list">${rows}</div>
+    <button class="btn btn-secondary close-btn">Cancel</button>
+  `);
+
+  modalLayer.querySelectorAll<HTMLButtonElement>('.choose-perk-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      if (!gameState.prestige(btn.dataset.id!)) return;
+      playLegendary();
+      closeModal();
+    });
+  });
+  modalLayer.querySelector('.close-btn')!.addEventListener('click', openLegacyModal);
+}
+
 function openLegacyModal() {
   const doneCount = LEGACY_MILESTONES.filter((m) => m.check()).length;
   const capstoneDone = LEGACY_CAPSTONE.check();
+  const prestigeSection = capstoneDone
+    ? `
+      <h2 class="modal-section-title">Prestige${gameState.prestigeLevel > 0 ? ` — Level ${gameState.prestigeLevel}` : ''}</h2>
+      <p class="modal-sub">You've done everything the valley has to offer this run. Begin anew for a permanent, stacking perk.</p>
+      ${prestigePerksOwnedHtml()}
+      <button class="btn prestige-btn">Begin Anew</button>
+    `
+    : '';
   renderModal(`
     <h2>Valley Legacy</h2>
     <p class="modal-sub">
@@ -895,8 +1052,10 @@ function openLegacyModal() {
     <div class="legacy-list">${LEGACY_MILESTONES.map((m) => legacyRowHtml(m)).join('')}</div>
     <h2 class="modal-section-title">Capstone</h2>
     <div class="legacy-list">${legacyRowHtml(LEGACY_CAPSTONE, true)}</div>
+    ${prestigeSection}
     <button class="btn btn-secondary close-btn">Close</button>
   `);
+  modalLayer.querySelector('.prestige-btn')?.addEventListener('click', openPrestigeChoiceModal);
   modalLayer.querySelector('.close-btn')!.addEventListener('click', closeModal);
 }
 
@@ -912,6 +1071,8 @@ function renderSeasonBadge() {
   if (el) el.textContent = gameState.season;
   const festival = document.getElementById('festival-banner');
   if (festival) festival.hidden = !gameState.isFestivalDay;
+  const merchant = document.getElementById('merchant-banner');
+  if (merchant) merchant.hidden = gameState.merchantVisit?.day !== gameState.day;
 }
 
 export function initUI() {
@@ -922,6 +1083,7 @@ export function initUI() {
       <div class="hud-stat">❤ <span id="hp-value">${gameState.hp}</span>/<span id="max-hp-value">${gameState.maxHp}</span></div>
       <div class="hud-stat">Day <span id="day-value">${gameState.day}</span> &middot; <span id="season-value">${gameState.season}</span></div>
       <div id="festival-banner" class="festival-banner" ${gameState.isFestivalDay ? '' : 'hidden'}>🎉 Festival</div>
+      <div id="merchant-banner" class="festival-banner merchant-banner" ${gameState.merchantVisit?.day === gameState.day ? '' : 'hidden'}>🛒 Merchant in town</div>
       <div class="hud-energybar" title="Energy — fades slowly on its own, faster in the Wilds. Sleep (End Day) to restore it.">
         <span class="energy-icon">&#9889;</span>
         <div class="energy-track"><div id="energy-fill" class="energy-fill${gameState.energy / gameState.maxEnergy < 0.25 ? ' energy-low' : ''}" style="width:${(gameState.energy / gameState.maxEnergy) * 100}%"></div></div>
@@ -1007,5 +1169,6 @@ export function initUI() {
   bus.on('day-summary', (summary: DaySummary) => openDaySummaryModal(summary));
   bus.on('open-townhall', openTownHallModal);
   bus.on('open-zonemap', openZoneMapModal);
+  bus.on('open-merchant', openMerchantModal);
   bus.on('open-npc', (npcId: string) => openNpcModal(npcId));
 }

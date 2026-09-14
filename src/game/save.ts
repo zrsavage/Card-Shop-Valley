@@ -1,5 +1,5 @@
 import { gameState, bus } from './state';
-import type { Card, ShelfSlot, ShopUpgrades, TownUpgrades, CombatUpgrades, NpcState } from './types';
+import type { Card, ShelfSlot, ShopUpgrades, TownUpgrades, CombatUpgrades, NpcState, BoardObjective, MerchantVisit } from './types';
 
 const SAVE_KEY = 'card-shop-valley-save-v1';
 
@@ -19,6 +19,14 @@ interface SaveData {
   lifetimeGoldEarned: number;
   lifetimeCardsSold: number;
   discoveredCards: string[];
+  enemiesDefeatedToday: number;
+  giftsGivenToday: number;
+  packsOpenedToday: number;
+  townBoard: BoardObjective[];
+  merchantVisit: MerchantVisit | null;
+  shinyCharmActive: boolean;
+  prestigeLevel: number;
+  prestigePerks: string[];
 }
 
 export function saveGame() {
@@ -39,6 +47,14 @@ export function saveGame() {
       lifetimeGoldEarned: gameState.lifetimeGoldEarned,
       lifetimeCardsSold: gameState.lifetimeCardsSold,
       discoveredCards: [...gameState.discoveredCards],
+      enemiesDefeatedToday: gameState.enemiesDefeatedToday,
+      giftsGivenToday: gameState.giftsGivenToday,
+      packsOpenedToday: gameState.packsOpenedToday,
+      townBoard: gameState.townBoard,
+      merchantVisit: gameState.merchantVisit,
+      shinyCharmActive: gameState.shinyCharmActive,
+      prestigeLevel: gameState.prestigeLevel,
+      prestigePerks: gameState.prestigePerks,
     };
     localStorage.setItem(SAVE_KEY, JSON.stringify(data));
   } catch {
@@ -80,6 +96,14 @@ export function loadGame(): boolean {
     if (typeof data.lifetimeGoldEarned === 'number') gameState.lifetimeGoldEarned = data.lifetimeGoldEarned;
     if (typeof data.lifetimeCardsSold === 'number') gameState.lifetimeCardsSold = data.lifetimeCardsSold;
     if (Array.isArray(data.discoveredCards)) gameState.discoveredCards = new Set(data.discoveredCards);
+    if (typeof data.enemiesDefeatedToday === 'number') gameState.enemiesDefeatedToday = data.enemiesDefeatedToday;
+    if (typeof data.giftsGivenToday === 'number') gameState.giftsGivenToday = data.giftsGivenToday;
+    if (typeof data.packsOpenedToday === 'number') gameState.packsOpenedToday = data.packsOpenedToday;
+    if (Array.isArray(data.townBoard)) gameState.townBoard = data.townBoard;
+    if (data.merchantVisit !== undefined) gameState.merchantVisit = data.merchantVisit;
+    if (typeof data.shinyCharmActive === 'boolean') gameState.shinyCharmActive = data.shinyCharmActive;
+    if (typeof data.prestigeLevel === 'number') gameState.prestigeLevel = data.prestigeLevel;
+    if (Array.isArray(data.prestigePerks)) gameState.prestigePerks = data.prestigePerks;
     return true;
   } catch {
     return false;
@@ -116,4 +140,8 @@ export function initAutosave() {
   bus.on('packs-changed', queueSave);
   bus.on('zones-changed', queueSave);
   bus.on('zone-changed', queueSave);
+  bus.on('town-board-changed', queueSave);
+  bus.on('merchant-changed', queueSave);
+  bus.on('board-progress-changed', queueSave);
+  bus.on('prestige', queueSave);
 }

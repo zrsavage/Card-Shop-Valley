@@ -1,11 +1,11 @@
 import Phaser from 'phaser';
 import { gameState, bus, WILDS_EXTRA_ENERGY_DRAIN_PER_SEC, EXHAUSTED_SPEED_MULTIPLIER, EXHAUSTED_DAMAGE_TAKEN_MULTIPLIER } from '../game/state';
 import { showFloatingText } from '../game/fx';
-import { ZONE_DEFS, rollPackDrop, type EnemyDef, type ZoneDef } from '../game/combat';
+import { ZONE_DEFS, rollPackDrop, BOSS_KILL_THRESHOLD, type EnemyDef, type ZoneDef } from '../game/combat';
 import { PACKS } from '../game/packs';
 import { WILDS_FROM_TOWN_POS, WILDS_TO_TOWN_TRIGGER } from '../game/layout';
 import { humanoidTextureKey, monsterTextureKey, attachCircleBody } from '../game/pixelArt';
-import { playHit, playPlayerHurt } from '../game/audio';
+import { playHit, playPlayerHurt, playLegendary } from '../game/audio';
 
 const PLAYER_SPEED = 240;
 const MELEE_RANGE = 85;
@@ -22,6 +22,9 @@ interface EnemyInstance {
   hp: number;
   lastContactTime: number;
   wanderTarget: { x: number; y: number };
+  isBoss: boolean;
+  bonusGold: number;
+  nameLabel: Phaser.GameObjects.Text | null;
 }
 
 export default class WildsScene extends Phaser.Scene {
@@ -36,6 +39,8 @@ export default class WildsScene extends Phaser.Scene {
   private nextSpawnAt = 1500;
   private lastDamageTime = 0;
   private zone!: ZoneDef;
+  private killCount = 0;
+  private bossSpawned = false;
 
   constructor() {
     super('Wilds');
@@ -49,6 +54,8 @@ export default class WildsScene extends Phaser.Scene {
     this.spawnTimer = 0;
     this.nextSpawnAt = 1500;
     this.lastDamageTime = 0;
+    this.killCount = 0;
+    this.bossSpawned = false;
 
     // Wild terrain — colored per zone so each one reads as a different
     // place, not just a recolored enemy roster on the same ground.
@@ -180,20 +187,32 @@ export default class WildsScene extends Phaser.Scene {
       this.killEnemy(enemy);
       return;
     }
+    const barWidth = enemy.isBoss ? 70 : 30;
     const frac = Math.max(0, enemy.hp / enemy.def.maxHp);
-    enemy.hpBarFill.setSize(30 * frac, 5);
+    enemy.hpBarFill.setSize(barWidth * frac, 5);
   }
 
   private killEnemy(enemy: EnemyInstance) {
+    gameState.noteEnemyDefeated();
     const packId = rollPackDrop(enemy.def);
     if (packId) {
       gameState.awardPack(packId);
       const pack = PACKS.find((p) => p.id === packId);
       showFloatingText(this, enemy.sprite.x, enemy.sprite.y - 24, `+1 ${pack?.name ?? 'Pack'}!`, '#ffd166');
     }
+    if (enemy.isBoss) {
+      gameState.addGold(enemy.bonusGold);
+      playLegendary();
+      showFloatingText(this, enemy.sprite.x, enemy.sprite.y - 48, `Boss defeated! +${enemy.bonusGold}g`, '#ffd166', 1800);
+      this.bossSpawned = false;
+      this.killCount = 0;
+    } else {
+      this.killCount += 1;
+    }
     enemy.sprite.destroy();
     enemy.hpBarBg.destroy();
     enemy.hpBarFill.destroy();
+    enemy.nameLabel?.destroy();
     this.enemies = this.enemies.filter((e) => e !== enemy);
   }
 
@@ -219,8 +238,10 @@ export default class WildsScene extends Phaser.Scene {
         enemy.sprite.y += Math.sin(angle) * (enemy.def.speed * 0.4) * dt;
       }
 
+      const barWidth = enemy.isBoss ? 70 : 30;
       enemy.hpBarBg.setPosition(enemy.sprite.x, enemy.sprite.y - enemy.def.radius - 10);
-      enemy.hpBarFill.setPosition(enemy.sprite.x - 15, enemy.sprite.y - enemy.def.radius - 10);
+      enemy.hpBarFill.setPosition(enemy.sprite.x - barWidth / 2, enemy.sprite.y - enemy.def.radius - 10);
+      enemy.nameLabel?.setPosition(enemy.sprite.x, enemy.sprite.y - enemy.def.radius - 24);
 
       const contactDist = enemy.def.radius + 16 + 2;
       if (distToPlayer < contactDist && time - enemy.lastContactTime > CONTACT_DAMAGE_COOLDOWN_MS) {
@@ -250,6 +271,10 @@ export default class WildsScene extends Phaser.Scene {
   }
 
   private tickSpawns(delta: number) {
+    if (!this.bossSpawned && this.killCount >= BOSS_KILL_THRESHOLD) {
+      this.spawnBoss();
+    }
+
     this.spawnTimer += delta;
     if (this.spawnTimer < this.nextSpawnAt) return;
     this.spawnTimer = 0;
@@ -259,8 +284,7 @@ export default class WildsScene extends Phaser.Scene {
     this.spawnEnemy();
   }
 
-  private spawnEnemy() {
-    const def = Phaser.Utils.Array.GetRandom(this.zone.enemies);
+  private findSpawnSpot(): { x: number; y: number } {
     let x = 400;
     let y = 300;
     for (let attempt = 0; attempt < 10; attempt++) {
@@ -268,6 +292,12 @@ export default class WildsScene extends Phaser.Scene {
       y = Phaser.Math.Between(70, 530);
       if (Phaser.Math.Distance.Between(x, y, this.player.x, this.player.y) > 160) break;
     }
+    return { x, y };
+  }
+
+  private spawnEnemy() {
+    const def = Phaser.Utils.Array.GetRandom(this.zone.enemies);
+    const { x, y } = this.findSpawnSpot();
 
     const texture = monsterTextureKey(this, def.color, def.radius * 2);
     const sprite = this.add.sprite(x, y, texture).setDepth(4);
@@ -283,6 +313,42 @@ export default class WildsScene extends Phaser.Scene {
       hp: def.maxHp,
       lastContactTime: 0,
       wanderTarget: { x, y },
+      isBoss: false,
+      bonusGold: 0,
+      nameLabel: null,
+    });
+  }
+
+  /** A build-up-and-payoff beat: after enough regular kills in this visit,
+   * the zone's boss shows up — bigger, tankier, and a guaranteed strong drop. */
+  private spawnBoss() {
+    this.bossSpawned = true;
+    const def = this.zone.boss;
+    const { x, y } = this.findSpawnSpot();
+
+    showFloatingText(this, 400, 300, `${def.name} appears!`, '#ff6b6b', 1800);
+
+    const texture = monsterTextureKey(this, def.color, def.radius * 2);
+    const sprite = this.add.sprite(x, y, texture).setDepth(4);
+    const nameLabel = this.add
+      .text(x, y - def.radius - 24, def.name, { fontSize: '12px', color: '#ffd166', backgroundColor: '#000000aa', padding: { x: 5, y: 2 } })
+      .setOrigin(0.5)
+      .setDepth(6);
+    const hpBarBg = this.add.rectangle(x, y - def.radius - 10, 70, 6, 0x2b1d0e).setDepth(6);
+    const hpBarFill = this.add.rectangle(x - 35, y - def.radius - 10, 70, 6, 0xff6b6b).setOrigin(0, 0.5).setDepth(7);
+    hpBarBg.setOrigin(0.5, 0.5);
+
+    this.enemies.push({
+      def,
+      sprite,
+      hpBarBg,
+      hpBarFill,
+      hp: def.maxHp,
+      lastContactTime: 0,
+      wanderTarget: { x, y },
+      isBoss: true,
+      bonusGold: def.bonusGold,
+      nameLabel,
     });
   }
 }

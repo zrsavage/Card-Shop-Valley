@@ -10,12 +10,6 @@ import { gameState, bus } from './game/state';
 loadGame();
 initAutosave();
 
-// Dev-only test hook — dead-code-eliminated from production builds since
-// import.meta.env.DEV is statically replaced with `false` by Vite.
-if (import.meta.env.DEV) {
-  (window as unknown as { __debug: { gameState: typeof gameState; bus: typeof bus } }).__debug = { gameState, bus };
-}
-
 const config: Phaser.Types.Core.GameConfig = {
   type: Phaser.AUTO,
   width: 800,
@@ -29,5 +23,15 @@ const config: Phaser.Types.Core.GameConfig = {
   scene: [ShopScene, TownScene, WildsScene],
 };
 
-new Phaser.Game(config);
+const game = new Phaser.Game(config);
 initUI();
+
+// Dev-only test hook — dead-code-eliminated from production builds since
+// import.meta.env.DEV is statically replaced with `false` by Vite.
+if (import.meta.env.DEV) {
+  (window as unknown as { __debug: { gameState: typeof gameState; bus: typeof bus; game: Phaser.Game } }).__debug = {
+    gameState,
+    bus,
+    game,
+  };
+}

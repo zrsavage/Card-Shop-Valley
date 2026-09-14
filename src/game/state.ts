@@ -1,7 +1,24 @@
 import Phaser from 'phaser';
-import type { Card, ShelfSlot, Season, ShopUpgrades, TownUpgrades, CombatUpgrades, NpcState, CardRequest, Rarity } from './types';
+import type {
+  Card,
+  ShelfSlot,
+  Season,
+  ShopUpgrades,
+  TownUpgrades,
+  CombatUpgrades,
+  NpcState,
+  CardRequest,
+  Rarity,
+  BoardObjective,
+  MerchantVisit,
+} from './types';
 import { SHOP_SHELF_POSITIONS } from './layout';
 import { NPCS } from './npcs';
+import { RARITIES, generateCard } from './cards';
+import { SEASON_CARD_POOL } from './species';
+import { rollTownBoard } from './townBoard';
+import { rollMerchantOffers, MERCHANT_VISIT_CHANCE } from './merchant';
+import { PRESTIGE_PERKS } from './prestige';
 
 export const bus = new Phaser.Events.EventEmitter();
 
@@ -30,6 +47,24 @@ export const BAG_TIER_CAPACITY_BONUS = 8;
 
 export const ENERGY_TONIC_COST = 30;
 export const ENERGY_TONIC_RESTORE = 40;
+
+// Shop reputation — derived from lifetime sales, not stored directly, so it
+// only ever grows and can't be gamed by a save/reload. Higher tiers unlock
+// customer archetypes beyond the default browse-or-buy visitor.
+export interface ReputationTier {
+  minSales: number;
+  name: string;
+  spawnMultiplier: number;
+  bulkBuyerChance: number;
+  bigSpenderChance: number;
+}
+
+export const REPUTATION_TIERS: ReputationTier[] = [
+  { minSales: 0, name: 'Newcomer', spawnMultiplier: 1, bulkBuyerChance: 0, bigSpenderChance: 0 },
+  { minSales: 15, name: 'Known in Town', spawnMultiplier: 1.15, bulkBuyerChance: 0.15, bigSpenderChance: 0 },
+  { minSales: 50, name: 'Trusted Shop', spawnMultiplier: 1.3, bulkBuyerChance: 0.3, bigSpenderChance: 0.15 },
+  { minSales: 120, name: 'Renowned', spawnMultiplier: 1.5, bulkBuyerChance: 0.4, bigSpenderChance: 0.3 },
+];
 
 // Requests skew toward the lower rarities so they're a real, reachable
 // target most of the time rather than a demand to farm a legendary.
@@ -123,6 +158,26 @@ class GameState {
    * sold, gifted, or shelved — the Encyclopedia's "discovered" set. */
   discoveredCards = new Set<string>();
 
+  enemiesDefeatedToday = 0;
+  giftsGivenToday = 0;
+  packsOpenedToday = 0;
+
+  /** Daily objectives posted at the Town Hall — rerolled (unclaimed rewards
+   * lost) every time the day ends. */
+  townBoard: BoardObjective[] = rollTownBoard();
+
+  /** Set (with rolled offers) only on the days the traveling merchant is
+   * actually in town — null the rest of the time. */
+  merchantVisit: MerchantVisit | null = null;
+  /** Consumed by the next pack opened, guaranteeing it includes a shiny. */
+  shinyCharmActive = false;
+
+  /** How many times the player has prestiged after reaching the Legacy
+   * capstone — resets most progress but keeps the encyclopedia and lifetime
+   * stats, in exchange for a permanent, stacking perk. */
+  prestigeLevel = 0;
+  prestigePerks: string[] = [];
+
   hp = PLAYER_BASE_MAX_HP;
   energy = PLAYER_MAX_ENERGY;
   /** Pack ids ready to open now — from combat drops (same day) or a
@@ -152,7 +207,9 @@ class GameState {
     const tiers = [this.combatUpgrades.weaponTier1, this.combatUpgrades.weaponTier2, this.combatUpgrades.weaponTier3].filter(
       Boolean,
     ).length;
-    return PLAYER_BASE_ATTACK_DAMAGE + tiers * WEAPON_TIER_DAMAGE_BONUS;
+    const base = PLAYER_BASE_ATTACK_DAMAGE + tiers * WEAPON_TIER_DAMAGE_BONUS;
+    const ironGripTiers = this.prestigePerks.filter((p) => p === 'ironGrip').length;
+    return Math.round(base * (1 + ironGripTiers * 0.1));
   }
 
   get maxHp(): number {
@@ -172,11 +229,55 @@ class GameState {
 
   get bagCapacity(): number {
     const tiers = [this.shopUpgrades.bagTier1, this.shopUpgrades.bagTier2].filter(Boolean).length;
-    return BAG_BASE_CAPACITY + tiers * BAG_TIER_CAPACITY_BONUS;
+    const packRatTiers = this.prestigePerks.filter((p) => p === 'packRat').length;
+    return BAG_BASE_CAPACITY + tiers * BAG_TIER_CAPACITY_BONUS + packRatTiers * 6;
   }
 
   hasBagSpace(count: number): boolean {
     return this.inventory.length + count <= this.bagCapacity;
+  }
+
+  get reputationTier(): ReputationTier {
+    let tier = REPUTATION_TIERS[0];
+    for (const t of REPUTATION_TIERS) {
+      if (this.lifetimeCardsSold >= t.minSales) tier = t;
+    }
+    return tier;
+  }
+
+  get nextReputationTier(): ReputationTier | null {
+    const idx = REPUTATION_TIERS.indexOf(this.reputationTier);
+    return REPUTATION_TIERS[idx + 1] ?? null;
+  }
+
+  /** Days including today before the current season's card set rotates
+   * out — 0 means today is the last day. */
+  get daysLeftInSeason(): number {
+    const posInSeason = (this.day - 1) % DAYS_PER_SEASON;
+    return DAYS_PER_SEASON - posInSeason - 1;
+  }
+
+  /** Seasons where every card (every stage of every species) has been
+   * discovered at least once — a real payoff for finishing the Encyclopedia. */
+  get completedSeasons(): Season[] {
+    return SEASONS.filter((season) => {
+      let total = 0;
+      let discovered = 0;
+      for (const rarity of RARITIES) {
+        for (const c of SEASON_CARD_POOL[season][rarity]) {
+          total += 1;
+          if (this.discoveredCards.has(`${c.speciesId}:${c.stage}`)) discovered += 1;
+        }
+      }
+      return total > 0 && discovered >= total;
+    });
+  }
+
+  /** Combined bonus applied to shop sale prices: prestige's Golden Touch
+   * perk plus a small permanent bump per fully-discovered season. */
+  get saleGoldMultiplier(): number {
+    const goldenTouchTiers = this.prestigePerks.filter((p) => p === 'goldenTouch').length;
+    return 1 + goldenTouchTiers * 0.1 + this.completedSeasons.length * 0.05;
   }
 
   addGold(amount: number) {
@@ -244,15 +345,16 @@ class GameState {
   sellFromShelf(shelfId: string): number {
     const shelf = this.shelves.find((s) => s.id === shelfId);
     if (!shelf || !shelf.card) return 0;
-    const price = shelf.price;
+    const earned = Math.round(shelf.price * this.saleGoldMultiplier);
     shelf.card = null;
     shelf.price = 0;
-    this.addGold(price);
-    this.goldEarnedToday += price;
+    this.addGold(earned);
+    this.goldEarnedToday += earned;
     this.cardsSoldToday += 1;
     this.lifetimeCardsSold += 1;
     bus.emit('shelves-changed', this.shelves);
-    return price;
+    bus.emit('board-progress-changed');
+    return earned;
   }
 
   purchaseShopUpgrade(key: keyof ShopUpgrades, cost: number): boolean {
@@ -326,8 +428,148 @@ class GameState {
       this.addGold(goldGain);
       npc.request = rollNpcRequest();
     }
+    this.giftsGivenToday += 1;
     bus.emit('npc-changed', npcId);
+    bus.emit('board-progress-changed');
     return { friendshipGain, goldGain, matchedRequest };
+  }
+
+  /** Called by the Wilds scene on every kill, regular or boss. */
+  noteEnemyDefeated() {
+    this.enemiesDefeatedToday += 1;
+    bus.emit('board-progress-changed');
+  }
+
+  /** Called right after a pack is opened, before its cards are added. */
+  notePackOpened() {
+    this.packsOpenedToday += 1;
+    bus.emit('board-progress-changed');
+  }
+
+  private boardMetricValue(metric: BoardObjective['metric']): number {
+    switch (metric) {
+      case 'cardsSold':
+        return this.cardsSoldToday;
+      case 'enemiesDefeated':
+        return this.enemiesDefeatedToday;
+      case 'giftsGiven':
+        return this.giftsGivenToday;
+      case 'packsOpened':
+        return this.packsOpenedToday;
+      case 'goldEarned':
+        return this.goldEarnedToday;
+    }
+  }
+
+  boardObjectiveProgress(obj: BoardObjective): number {
+    return this.boardMetricValue(obj.metric);
+  }
+
+  claimBoardObjective(id: string): boolean {
+    const obj = this.townBoard.find((o) => o.id === id);
+    if (!obj || obj.claimed) return false;
+    if (this.boardMetricValue(obj.metric) < obj.target) return false;
+    obj.claimed = true;
+    this.addGold(obj.reward);
+    bus.emit('town-board-changed', this.townBoard);
+    return true;
+  }
+
+  /** Consumes the active shiny charm, if any — the caller uses the return
+   * value to force one card in the pack it's about to open. */
+  consumeShinyCharm(): boolean {
+    if (!this.shinyCharmActive) return false;
+    this.shinyCharmActive = false;
+    return true;
+  }
+
+  buyMerchantOffer(offerId: string): boolean {
+    if (!this.merchantVisit || this.merchantVisit.day !== this.day) return false;
+    const offer = this.merchantVisit.offers.find((o) => o.id === offerId);
+    if (!offer || offer.purchased) return false;
+    if (offer.kind === 'rareBundle' && !this.hasBagSpace(3)) return false;
+    if (!this.spendGold(offer.cost)) return false;
+    offer.purchased = true;
+
+    if (offer.kind === 'rareBundle') {
+      const weights: [Rarity, number][] = [
+        ['rare', 55],
+        ['epic', 35],
+        ['legendary', 10],
+      ];
+      const total = weights.reduce((sum, [, w]) => sum + w, 0);
+      const cards: Card[] = [];
+      for (let i = 0; i < 3; i++) {
+        let roll = Math.random() * total;
+        let rarity: Rarity = 'rare';
+        for (const [r, w] of weights) {
+          if (roll < w) {
+            rarity = r;
+            break;
+          }
+          roll -= w;
+        }
+        cards.push(generateCard(rarity, this.season));
+      }
+      this.addCardsToInventory(cards);
+    } else if (offer.kind === 'shinyCharm') {
+      this.shinyCharmActive = true;
+    } else if (offer.kind === 'mythicCloseout') {
+      this.awardPack('mythic');
+    }
+
+    bus.emit('merchant-changed', this.merchantVisit);
+    return true;
+  }
+
+  /** Only callable once the Legacy capstone is complete (checked by the
+   * caller, to avoid a circular import between state.ts and legacy.ts).
+   * Resets almost everything in exchange for a permanent, stacking perk —
+   * the encyclopedia and lifetime stats survive so earlier milestones stay
+   * complete. */
+  prestige(perkId: string): boolean {
+    if (!PRESTIGE_PERKS.some((p) => p.id === perkId)) return false;
+    this.prestigeLevel += 1;
+    this.prestigePerks.push(perkId);
+
+    this.gold = 100;
+    this.day = 1;
+    this.inventory = [];
+    this.shelves = SHOP_SHELF_POSITIONS.map((_, i) => ({ id: `shelf-${i}`, card: null, price: 0 }));
+    this.shopUpgrades = defaultShopUpgrades();
+    this.townUpgrades = defaultTownUpgrades();
+    this.combatUpgrades = defaultCombatUpgrades();
+    this.npcs = defaultNpcStates();
+    this.ownedPacks = [];
+    this.pendingPacks = [];
+    this.unlockedZones = ['bramble'];
+    this.currentZoneId = 'bramble';
+    this.goldEarnedToday = 0;
+    this.cardsSoldToday = 0;
+    this.enemiesDefeatedToday = 0;
+    this.giftsGivenToday = 0;
+    this.packsOpenedToday = 0;
+    this.townBoard = rollTownBoard();
+    this.merchantVisit = null;
+    this.shinyCharmActive = false;
+    this.hp = this.maxHp;
+    this.energy = this.maxEnergy;
+
+    bus.emit('prestige', this.prestigeLevel);
+    bus.emit('gold-changed', this.gold);
+    bus.emit('day-changed', this.day);
+    bus.emit('inventory-changed', this.inventory);
+    bus.emit('shelves-changed', this.shelves);
+    bus.emit('shop-upgrades-changed', this.shopUpgrades);
+    bus.emit('town-upgrades-changed', this.townUpgrades);
+    bus.emit('combat-upgrades-changed', this.combatUpgrades);
+    bus.emit('hp-changed', this.hp);
+    bus.emit('energy-changed', this.energy);
+    bus.emit('packs-changed', this.ownedPacks);
+    bus.emit('zones-changed', this.unlockedZones);
+    bus.emit('town-board-changed', this.townBoard);
+    bus.emit('merchant-changed', this.merchantVisit);
+    return true;
   }
 
   /** Returns true if this brought the player to 0 HP. */
@@ -405,7 +647,9 @@ class GameState {
    * exertion (e.g. the Wilds) on top of it. */
   tickEnergy(deltaMs: number, extraDrainPerSec = 0) {
     if (this.paused) return;
-    const drain = (ENERGY_DRAIN_PER_SEC + extraDrainPerSec) * (deltaMs / 1000);
+    const enduringSpiritTiers = this.prestigePerks.filter((p) => p === 'enduringSpirit').length;
+    const drainMultiplier = Math.max(0.1, 1 - enduringSpiritTiers * 0.15);
+    const drain = (ENERGY_DRAIN_PER_SEC + extraDrainPerSec) * drainMultiplier * (deltaMs / 1000);
     if (drain <= 0) return;
     this.energy = Math.max(0, this.energy - drain);
     bus.emit('energy-changed', this.energy);
@@ -424,15 +668,22 @@ class GameState {
     this.day += 1;
     this.goldEarnedToday = 0;
     this.cardsSoldToday = 0;
+    this.enemiesDefeatedToday = 0;
+    this.giftsGivenToday = 0;
+    this.packsOpenedToday = 0;
     this.energy = this.maxEnergy;
     if (this.pendingPacks.length > 0) {
       this.ownedPacks.push(...this.pendingPacks);
       this.pendingPacks = [];
       bus.emit('packs-changed', this.ownedPacks);
     }
+    this.townBoard = rollTownBoard();
+    this.merchantVisit = Math.random() < MERCHANT_VISIT_CHANCE ? { day: this.day, offers: rollMerchantOffers() } : null;
     bus.emit('energy-changed', this.energy);
     bus.emit('day-changed', this.day);
     bus.emit('day-summary', summary);
+    bus.emit('town-board-changed', this.townBoard);
+    bus.emit('merchant-changed', this.merchantVisit);
   }
 }
 

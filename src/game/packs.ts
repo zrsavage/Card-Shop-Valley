@@ -1,5 +1,5 @@
 import type { Card, Rarity, Season } from './types';
-import { generateCard } from './cards';
+import { generateCard, SHINY_VALUE_MULTIPLIER } from './cards';
 
 export interface PackDefinition {
   id: string;
@@ -59,10 +59,15 @@ function pickWeighted(weights: Record<Rarity, number>): Rarity {
   return entries[0][0];
 }
 
-export function openPack(pack: PackDefinition, season: Season): Card[] {
+export function openPack(pack: PackDefinition, season: Season, opts?: { forceShinyOnce?: boolean }): Card[] {
   const cards: Card[] = [];
   for (let i = 0; i < pack.cardCount; i++) {
     cards.push(generateCard(pickWeighted(pack.weights), season));
+  }
+  if (opts?.forceShinyOnce && !cards.some((c) => c.shiny)) {
+    const target = cards[Math.floor(Math.random() * cards.length)];
+    target.shiny = true;
+    target.baseValue = Math.round(target.baseValue * SHINY_VALUE_MULTIPLIER);
   }
   return cards;
 }

@@ -234,8 +234,10 @@ export default class ShopScene extends Phaser.Scene {
     this.customerSpawnTimer = 0;
 
     const fast = gameState.shopUpgrades.marketingSign || gameState.isFestivalDay;
-    const [min, max] = fast ? [1800, 3200] : [3500, 6500];
-    this.nextSpawnAt = Phaser.Math.Between(min, max);
+    const [baseMin, baseMax] = fast ? [1800, 3200] : [3500, 6500];
+    // A better reputation means more foot traffic, on top of the sign/festival boost.
+    const repMultiplier = gameState.reputationTier.spawnMultiplier;
+    this.nextSpawnAt = Phaser.Math.Between(Math.round(baseMin / repMultiplier), Math.round(baseMax / repMultiplier));
 
     const maxConcurrent = gameState.isFestivalDay ? 5 : 3;
     const activeCustomers = this.children.list.filter((c) => (c as any).__customer).length;
