@@ -1,11 +1,11 @@
-import { gameState, bus, DAY_LENGTH_MS, WEAPON_TIER_DAMAGE_BONUS, VITALITY_TIER_HP_BONUS, type DaySummary } from '../game/state';
+import { gameState, bus, DAY_LENGTH_MS, WEAPON_TIER_DAMAGE_BONUS, VITALITY_TIER_HP_BONUS, SEASONS, type DaySummary } from '../game/state';
 import { PACKS, openPack, type PackDefinition } from '../game/packs';
-import { RARITY_LABELS, SEASON_PRICE_MULTIPLIER } from '../game/cards';
+import { RARITIES, RARITY_LABELS, RARITY_BASE_VALUE, SEASON_PRICE_MULTIPLIER } from '../game/cards';
 import { NPCS, friendshipTier, FRIENDSHIP_TIER_LABELS } from '../game/npcs';
 import { generateCardArtSvg, cardArtImagePath } from '../game/cardArt';
-import { SEASON_SET_NAME } from '../game/species';
+import { SEASON_SET_NAME, SEASON_CARD_POOL, STAGE_VALUE_MULTIPLIER, type SpeciesCard } from '../game/species';
 import { ZONE_DEFS } from '../game/combat';
-import type { Card, ShopUpgrades, TownUpgrades, CombatUpgrades } from '../game/types';
+import type { Card, ShopUpgrades, TownUpgrades, CombatUpgrades, Season } from '../game/types';
 
 function effectivePackCost(pack: PackDefinition): number {
   return Math.round(pack.cost * SEASON_PRICE_MULTIPLIER[gameState.season]);
@@ -498,6 +498,82 @@ function openNpcModal(npcId: string) {
   modalLayer.querySelector('.close-btn')!.addEventListener('click', closeModal);
 }
 
+// --- Encyclopedia (every card: name, rarity, rough price, art) ---
+
+let encyclopediaSeason: Season = gameState.season;
+let encyclopediaQuery = '';
+
+/** Season-neutral estimate — actual sale price also depends on that
+ * season's price multiplier and per-card jitter, so this is a "rough"
+ * figure rather than what any one copy will actually fetch. */
+function roughCardValue(card: SpeciesCard): number {
+  return Math.round(RARITY_BASE_VALUE[card.rarity] * STAGE_VALUE_MULTIPLIER[card.stage - 1]);
+}
+
+function codexRowHtml(card: SpeciesCard): string {
+  const art = `
+    <img class="codex-thumb" src="${cardArtImagePath(card.speciesId)}" alt=""
+      onerror="this.style.display='none'; this.nextElementSibling.style.display='block';" />
+    <div class="codex-thumb-fallback" style="display:none">${generateCardArtSvg(card.speciesId, encyclopediaSeason, card.rarity, card.stage)}</div>
+  `;
+  const stageNote = card.stageCount > 1 ? ` &middot; Stage ${card.stage}/${card.stageCount}` : '';
+  return `
+    <div class="codex-row">
+      <div class="codex-thumb-wrap">${art}</div>
+      <div class="codex-info">
+        <div class="codex-name">${card.name}</div>
+        <div class="codex-meta">${RARITY_LABELS[card.rarity]}${stageNote}</div>
+      </div>
+      <div class="codex-price">~${roughCardValue(card)}g</div>
+    </div>
+  `;
+}
+
+function encyclopediaBodyHtml(): string {
+  const pool = SEASON_CARD_POOL[encyclopediaSeason];
+  const query = encyclopediaQuery.trim().toLowerCase();
+  const sections = RARITIES.map((rarity) => {
+    const cards = pool[rarity].filter((c) => !query || c.name.toLowerCase().includes(query));
+    if (cards.length === 0) return '';
+    return `
+      <h3 class="codex-rarity-heading rarity-pill-${rarity}">${RARITY_LABELS[rarity]} <span class="codex-count">${cards.length}</span></h3>
+      ${cards.map(codexRowHtml).join('')}
+    `;
+  }).join('');
+  return sections.trim() ? sections : `<p class="modal-sub">No cards match "${encyclopediaQuery}".</p>`;
+}
+
+function openEncyclopediaModal() {
+  const tabs = SEASONS.map(
+    (season) =>
+      `<button class="btn btn-small codex-tab-btn${season === encyclopediaSeason ? ' codex-tab-active' : ''}" data-season="${season}">${season}</button>`,
+  ).join('');
+
+  renderModal(`
+    <h2>Card Encyclopedia</h2>
+    <p class="modal-sub">Every card in ${SEASON_SET_NAME[encyclopediaSeason]}. Prices are rough estimates — actual sale price varies by season and buyer.</p>
+    <div class="codex-tabs">${tabs}</div>
+    <input type="text" id="codex-search" class="codex-search" placeholder="Search by name..." value="${encyclopediaQuery}" />
+    <div class="codex-list" id="codex-list">${encyclopediaBodyHtml()}</div>
+    <button class="btn btn-secondary close-btn">Close</button>
+  `);
+
+  modalLayer.querySelectorAll<HTMLButtonElement>('.codex-tab-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      encyclopediaSeason = btn.dataset.season as Season;
+      openEncyclopediaModal();
+    });
+  });
+  const searchInput = modalLayer.querySelector('#codex-search') as HTMLInputElement;
+  searchInput.addEventListener('input', () => {
+    encyclopediaQuery = searchInput.value;
+    const list = modalLayer.querySelector('#codex-list')!;
+    list.innerHTML = encyclopediaBodyHtml();
+  });
+  searchInput.focus();
+  modalLayer.querySelector('.close-btn')!.addEventListener('click', closeModal);
+}
+
 // --- HUD / inventory tray ---
 
 function renderInventoryTray() {
@@ -528,6 +604,7 @@ export function initUI() {
       <div class="hud-stat">Day <span id="day-value">${gameState.day}</span> &middot; <span id="season-value">${gameState.season}</span></div>
       <div id="festival-banner" class="festival-banner" ${gameState.isFestivalDay ? '' : 'hidden'}>🎉 Festival</div>
       <div class="hud-timebar"><div id="time-fill" class="time-fill"></div></div>
+      <button id="encyclopedia-btn" class="btn btn-small">&#128214; Cards</button>
       <button id="end-day-btn" class="btn btn-small">End Day</button>
     </div>
     <div id="inventory-tray"></div>
@@ -537,6 +614,10 @@ export function initUI() {
 
   document.getElementById('end-day-btn')!.addEventListener('click', () => {
     gameState.endDay();
+  });
+  document.getElementById('encyclopedia-btn')!.addEventListener('click', () => {
+    encyclopediaSeason = gameState.season;
+    openEncyclopediaModal();
   });
 
   renderInventoryTray();
