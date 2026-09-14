@@ -45,8 +45,9 @@ html, body {
   left: 10px;
   right: 10px;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 14px;
+  gap: 8px 14px;
   background: #fff8ec;
   border: 3px solid #2b1d0e;
   border-radius: 14px;
@@ -62,6 +63,7 @@ html, body {
 
 .hud-timebar {
   flex: 1;
+  min-width: 90px;
   height: 10px;
   background: #e0d2b8;
   border-radius: 6px;
