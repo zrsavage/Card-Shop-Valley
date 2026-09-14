@@ -13,8 +13,12 @@ interface SaveData {
   combatUpgrades: CombatUpgrades;
   npcs: Record<string, NpcState>;
   ownedPacks: string[];
+  pendingPacks: string[];
   unlockedZones: string[];
   currentZoneId: string;
+  lifetimeGoldEarned: number;
+  lifetimeCardsSold: number;
+  discoveredCards: string[];
 }
 
 export function saveGame() {
@@ -29,8 +33,12 @@ export function saveGame() {
       combatUpgrades: gameState.combatUpgrades,
       npcs: gameState.npcs,
       ownedPacks: gameState.ownedPacks,
+      pendingPacks: gameState.pendingPacks,
       unlockedZones: gameState.unlockedZones,
       currentZoneId: gameState.currentZoneId,
+      lifetimeGoldEarned: gameState.lifetimeGoldEarned,
+      lifetimeCardsSold: gameState.lifetimeCardsSold,
+      discoveredCards: [...gameState.discoveredCards],
     };
     localStorage.setItem(SAVE_KEY, JSON.stringify(data));
   } catch {
@@ -66,8 +74,12 @@ export function loadGame(): boolean {
       }
     }
     if (Array.isArray(data.ownedPacks)) gameState.ownedPacks = data.ownedPacks;
+    if (Array.isArray(data.pendingPacks)) gameState.pendingPacks = data.pendingPacks;
     if (Array.isArray(data.unlockedZones)) gameState.unlockedZones = data.unlockedZones;
     if (typeof data.currentZoneId === 'string') gameState.currentZoneId = data.currentZoneId;
+    if (typeof data.lifetimeGoldEarned === 'number') gameState.lifetimeGoldEarned = data.lifetimeGoldEarned;
+    if (typeof data.lifetimeCardsSold === 'number') gameState.lifetimeCardsSold = data.lifetimeCardsSold;
+    if (Array.isArray(data.discoveredCards)) gameState.discoveredCards = new Set(data.discoveredCards);
     return true;
   } catch {
     return false;
@@ -100,6 +112,7 @@ export function initAutosave() {
   bus.on('npc-changed', queueSave);
   bus.on('shelves-changed', queueSave);
   bus.on('inventory-changed', queueSave);
+  bus.on('cards-discovered', queueSave);
   bus.on('packs-changed', queueSave);
   bus.on('zones-changed', queueSave);
   bus.on('zone-changed', queueSave);

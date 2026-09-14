@@ -5,6 +5,7 @@ import { NPCS, friendshipTier, FRIENDSHIP_TIER_LABELS } from '../game/npcs';
 import { generateCardArtSvg, cardArtImagePath } from '../game/cardArt';
 import { SEASON_SET_NAME, SEASON_CARD_POOL, STAGE_VALUE_MULTIPLIER, type SpeciesCard } from '../game/species';
 import { ZONE_DEFS } from '../game/combat';
+import { LEGACY_MILESTONES, LEGACY_CAPSTONE, type LegacyMilestone } from '../game/legacy';
 import type { Card, ShopUpgrades, TownUpgrades, CombatUpgrades, Season, Rarity } from '../game/types';
 
 function effectivePackCost(pack: PackDefinition): number {
@@ -46,13 +47,32 @@ function cardChipHtml(card: Card, small = false): string {
 }
 
 // A card plus its current market value shown as a separate tag underneath —
-// used wherever the player needs the price for a decision (unpacking,
-// shelving, gifting), without the value living on the card itself.
+// used wherever the player needs the value for a decision (unpacking).
 function cardSlotHtml(card: Card, small = false): string {
   return `
     <div class="card-slot">
       ${cardChipHtml(card, small)}
       <div class="value-tag">${card.baseValue}g</div>
+    </div>
+  `;
+}
+
+// A single-line, compact row for picking a card out of a list (stocking a
+// shelf, choosing a gift) — a thumbnail plus name/rarity, not a full card
+// face, so a long list reads as an organized list instead of a wall of cards.
+function compactCardRowHtml(card: Card, idx: number, trailingHtml: string): string {
+  return `
+    <div class="codex-row" data-idx="${idx}">
+      <div class="codex-thumb-wrap">
+        <img class="codex-thumb" src="${cardArtImagePath(card.speciesId)}" alt=""
+          onerror="this.style.display='none'; this.nextElementSibling.style.display='block';" />
+        <div class="codex-thumb-fallback" style="display:none">${generateCardArtSvg(card.speciesId, card.season, card.rarity, card.stage)}</div>
+      </div>
+      <div class="codex-info">
+        <div class="codex-name">${card.name}</div>
+        <div class="codex-meta">${RARITY_LABELS[card.rarity]} &middot; base ${card.baseValue}g</div>
+      </div>
+      ${trailingHtml}
     </div>
   `;
 }
@@ -178,31 +198,44 @@ function shopUpgradesHtml(): string {
   }).join('');
 }
 
-// --- Packs earned from combat, free to open ---
+// --- Packs on hand: ready to open now (combat drops, or a purchase that
+// matured overnight), and pending (bought today, arriving tomorrow) ---
 
-function ownedPacksHtml(): string {
-  if (gameState.ownedPacks.length === 0) {
-    return `<p class="modal-sub">No free packs yet — defeat enemies in the Wilds for a chance at one.</p>`;
-  }
+function packCountRows(packIds: string[], ready: boolean): string {
   const counts = new Map<string, number>();
-  for (const id of gameState.ownedPacks) counts.set(id, (counts.get(id) ?? 0) + 1);
+  for (const id of packIds) counts.set(id, (counts.get(id) ?? 0) + 1);
   return [...counts.entries()]
     .map(([id, count]) => {
       const pack = PACKS.find((p) => p.id === id);
       if (!pack) return '';
+      const actions = ready
+        ? `<button class="btn open-owned-pack-btn" data-pack="${id}">Open</button>
+           <button class="btn btn-secondary sell-owned-pack-btn" data-pack="${id}">Sell ${pack.sellValue}g</button>`
+        : `<span class="pack-pending-tag">Arrives tomorrow</span>`;
       return `
-        <div class="pack-row">
+        <div class="pack-row${ready ? '' : ' pack-row-pending'}">
           <div class="pack-swatch" style="background:${colorToCss(pack.color)}"></div>
           <div class="pack-info">
             <div class="pack-name">${pack.name}${count > 1 ? ` &times;${count}` : ''}</div>
             <div class="pack-meta">${pack.cardCount} cards &middot; ${SEASON_SET_NAME[gameState.season]}</div>
           </div>
-          <button class="btn open-owned-pack-btn" data-pack="${id}">Open Free</button>
-          <button class="btn btn-secondary sell-owned-pack-btn" data-pack="${id}">Sell ${pack.sellValue}g</button>
+          ${actions}
         </div>
       `;
     })
     .join('');
+}
+
+function ownedPacksHtml(): string {
+  const readySection =
+    gameState.ownedPacks.length > 0
+      ? `<div class="pack-list">${packCountRows(gameState.ownedPacks, true)}</div>`
+      : `<p class="modal-sub">No packs ready to open yet — order one below (it'll be here tomorrow), or defeat enemies in the Wilds for an instant one.</p>`;
+  const pendingSection =
+    gameState.pendingPacks.length > 0
+      ? `<h2 class="modal-section-title">Arriving Tomorrow</h2><div class="pack-list">${packCountRows(gameState.pendingPacks, false)}</div>`
+      : '';
+  return readySection + pendingSection;
 }
 
 // --- Counter (packs + shop upgrades) ---
@@ -226,12 +259,12 @@ function openCounterModal() {
   renderModal(`
     <h2>Pack Counter</h2>
     <p class="modal-sub">
-      Now stocking <strong>${SEASON_SET_NAME[gameState.season]}</strong> — buy a pack to stock your shelves.
+      Now stocking <strong>${SEASON_SET_NAME[gameState.season]}</strong> — order a pack and it'll arrive tomorrow.
       ${multiplier !== 1 ? `<br><strong>${gameState.season} market:</strong> prices &times;${multiplier}.` : ''}
     </p>
     <div class="pack-list">${packRows}</div>
     <h2 class="modal-section-title">Your Packs</h2>
-    <div class="pack-list">${ownedPacksHtml()}</div>
+    ${ownedPacksHtml()}
     <h2 class="modal-section-title">Shop Upgrades</h2>
     <div class="pack-list">${shopUpgradesHtml()}</div>
     <button class="btn btn-secondary close-btn">Close</button>
@@ -240,9 +273,8 @@ function openCounterModal() {
   modalLayer.querySelectorAll<HTMLButtonElement>('.buy-pack-btn').forEach((btn) => {
     btn.addEventListener('click', () => {
       const pack = PACKS.find((p) => p.id === btn.dataset.pack) as PackDefinition;
-      if (!gameState.spendGold(effectivePackCost(pack))) return;
-      const cards = openPack(pack, gameState.season);
-      openPackRevealModal(pack, cards);
+      if (!gameState.buyPackPending(pack.id, effectivePackCost(pack))) return;
+      openCounterModal();
     });
   });
   modalLayer.querySelectorAll<HTMLButtonElement>('.open-owned-pack-btn').forEach((btn) => {
@@ -291,13 +323,20 @@ function openPackRevealModal(pack: PackDefinition, cards: Card[]) {
   renderModal(`
     <h2>${pack.name} Opened!</h2>
     <p class="modal-sub">${SEASON_SET_NAME[season]}</p>
-    <div class="reveal-grid" id="reveal-grid"></div>
+    <div class="reveal-stage" id="reveal-stage"></div>
+    <div class="reveal-progress" id="reveal-progress">
+      ${order.map(() => `<div class="reveal-pip"></div>`).join('')}
+    </div>
+    <div class="reveal-grid" id="reveal-grid" hidden></div>
     <div class="modal-actions">
       <button class="btn btn-secondary skip-reveal-btn">Skip &raquo;</button>
       <button class="btn collect-btn" hidden>Collect Cards</button>
     </div>
   `);
 
+  const stage = modalLayer.querySelector('#reveal-stage') as HTMLDivElement;
+  const progress = modalLayer.querySelector('#reveal-progress') as HTMLDivElement;
+  const pips = progress.querySelectorAll<HTMLDivElement>('.reveal-pip');
   const grid = modalLayer.querySelector('#reveal-grid') as HTMLDivElement;
   const skipBtn = modalLayer.querySelector('.skip-reveal-btn') as HTMLButtonElement;
   const collectBtn = modalLayer.querySelector('.collect-btn') as HTMLButtonElement;
@@ -305,20 +344,28 @@ function openPackRevealModal(pack: PackDefinition, cards: Card[]) {
   let idx = 0;
   let timer: ReturnType<typeof setTimeout> | null = null;
 
-  function appendCard(card: Card, animate: boolean) {
+  function spotlight(card: Card) {
     const wrap = document.createElement('div');
-    wrap.className = animate ? 'card-reveal-pop' : '';
-    if (animate && (card.rarity === 'epic' || card.rarity === 'legendary')) {
-      wrap.classList.add('card-reveal-flourish');
+    wrap.className = 'card-spotlight';
+    if (card.rarity === 'epic' || card.rarity === 'legendary') {
+      wrap.classList.add('card-spotlight-flourish');
     }
     wrap.style.setProperty('--glow', REVEAL_GLOW_COLOR[card.rarity]);
     wrap.innerHTML = cardSlotHtml(card);
-    grid.appendChild(wrap);
+    stage.replaceChildren(wrap);
+
+    const pip = pips[order.indexOf(card)];
+    pip.style.setProperty('--pip-color', REVEAL_GLOW_COLOR[card.rarity]);
+    pip.classList.add('reveal-pip-done');
   }
 
   function finish() {
     timer = null;
+    stage.hidden = true;
+    progress.hidden = true;
     skipBtn.hidden = true;
+    grid.hidden = false;
+    grid.innerHTML = order.map((c) => cardSlotHtml(c)).join('');
     collectBtn.hidden = false;
   }
 
@@ -327,17 +374,13 @@ function openPackRevealModal(pack: PackDefinition, cards: Card[]) {
       finish();
       return;
     }
-    appendCard(order[idx], true);
+    spotlight(order[idx]);
     idx += 1;
-    timer = setTimeout(revealNext, 420);
+    timer = setTimeout(revealNext, 620);
   }
 
   skipBtn.addEventListener('click', () => {
     if (timer) clearTimeout(timer);
-    while (idx < order.length) {
-      appendCard(order[idx], false);
-      idx += 1;
-    }
     finish();
   });
 
@@ -370,17 +413,16 @@ function openShelfModal(shelfId: string) {
     bodyHtml = `<p class="modal-sub">This shelf is empty, and your bag has no cards. Buy a pack at the counter!</p>`;
   } else {
     const items = gameState.inventory
-      .map(
-        (c, idx) => `
-          <div class="inventory-row" data-idx="${idx}">
-            ${cardSlotHtml(c)}
-            <input type="number" class="place-price-input" min="1" value="${c.baseValue}" />
-            <button class="btn place-btn" data-idx="${idx}">Place</button>
-          </div>
-        `,
+      .map((c, idx) =>
+        compactCardRowHtml(
+          c,
+          idx,
+          `<input type="number" class="place-price-input" min="1" value="${c.baseValue}" />
+           <button class="btn btn-small place-btn" data-idx="${idx}">Place</button>`,
+        ),
       )
       .join('');
-    bodyHtml = `<div class="inventory-list">${items}</div>`;
+    bodyHtml = `<div class="codex-list">${items}</div>`;
   }
 
   renderModal(`
@@ -404,7 +446,7 @@ function openShelfModal(shelfId: string) {
       btn.addEventListener('click', () => {
         const idx = Number(btn.dataset.idx);
         const card = gameState.inventory[idx];
-        const row = btn.closest('.inventory-row') as HTMLElement;
+        const row = btn.closest('.codex-row') as HTMLElement;
         const priceInput = row.querySelector('.place-price-input') as HTMLInputElement;
         gameState.placeOnShelf(shelfId, card.id, Number(priceInput.value));
         closeModal();
@@ -417,9 +459,13 @@ function openShelfModal(shelfId: string) {
 // --- Day summary ---
 
 function openDaySummaryModal(summary: DaySummary) {
+  const packsLine =
+    summary.packsArrived > 0
+      ? `<br>&#127873; ${summary.packsArrived} pack${summary.packsArrived === 1 ? '' : 's'} arrived overnight — ready at the counter.`
+      : '';
   renderModal(`
     <h2>Day ${summary.day} Complete!</h2>
-    <p class="modal-sub">${SEASON_SET_NAME[summary.season]} &middot; Earned <strong>${summary.goldEarned}g</strong> from ${summary.cardsSold} sale${summary.cardsSold === 1 ? '' : 's'}.</p>
+    <p class="modal-sub">${SEASON_SET_NAME[summary.season]} &middot; Earned <strong>${summary.goldEarned}g</strong> from ${summary.cardsSold} sale${summary.cardsSold === 1 ? '' : 's'}.${packsLine}</p>
     <button class="btn start-day-btn">Start Day ${summary.day + 1}</button>
   `);
   modalLayer.querySelector('.start-day-btn')!.addEventListener('click', closeModal);
@@ -520,16 +566,9 @@ function openNpcModal(npcId: string) {
   const giftRows =
     gameState.inventory.length === 0
       ? `<p class="modal-sub">You have no cards in your bag to gift.</p>`
-      : gameState.inventory
-          .map(
-            (c, idx) => `
-              <div class="inventory-row" data-idx="${idx}">
-                ${cardSlotHtml(c)}
-                <button class="btn gift-btn" data-idx="${idx}">Gift</button>
-              </div>
-            `,
-          )
-          .join('');
+      : `<div class="codex-list">${gameState.inventory
+          .map((c, idx) => compactCardRowHtml(c, idx, `<button class="btn btn-small gift-btn" data-idx="${idx}">Gift</button>`))
+          .join('')}</div>`;
 
   renderModal(`
     <h2>${def.name}</h2>
@@ -540,7 +579,7 @@ function openNpcModal(npcId: string) {
       <button class="btn talk-btn" ${alreadyTalkedToday ? 'disabled' : ''}>${alreadyTalkedToday ? 'Already talked today' : 'Talk'}</button>
     </div>
     <h2 class="modal-section-title">Give a Gift</h2>
-    <div class="inventory-list">${giftRows}</div>
+    ${giftRows}
     <button class="btn btn-secondary close-btn">Close</button>
   `);
 
@@ -591,12 +630,27 @@ function roughCardValue(card: SpeciesCard): number {
 }
 
 function codexRowHtml(card: SpeciesCard): string {
+  const stageNote = card.stageCount > 1 ? ` &middot; Stage ${card.stage}/${card.stageCount}` : '';
+  const discovered = gameState.discoveredCards.has(`${card.speciesId}:${card.stage}`);
+
+  if (!discovered) {
+    return `
+      <div class="codex-row codex-row-undiscovered">
+        <div class="codex-thumb-wrap codex-thumb-undiscovered">?</div>
+        <div class="codex-info">
+          <div class="codex-name">???</div>
+          <div class="codex-meta">${RARITY_LABELS[card.rarity]}${stageNote} &middot; not yet found</div>
+        </div>
+        <div class="codex-price">???</div>
+      </div>
+    `;
+  }
+
   const art = `
     <img class="codex-thumb" src="${cardArtImagePath(card.speciesId)}" alt=""
       onerror="this.style.display='none'; this.nextElementSibling.style.display='block';" />
     <div class="codex-thumb-fallback" style="display:none">${generateCardArtSvg(card.speciesId, encyclopediaSeason, card.rarity, card.stage)}</div>
   `;
-  const stageNote = card.stageCount > 1 ? ` &middot; Stage ${card.stage}/${card.stageCount}` : '';
   return `
     <div class="codex-row">
       <div class="codex-thumb-wrap">${art}</div>
@@ -613,7 +667,12 @@ function encyclopediaBodyHtml(): string {
   const pool = SEASON_CARD_POOL[encyclopediaSeason];
   const query = encyclopediaQuery.trim().toLowerCase();
   const sections = RARITIES.map((rarity) => {
-    const cards = pool[rarity].filter((c) => !query || c.name.toLowerCase().includes(query));
+    // A search never matches an undiscovered card's hidden real name — that
+    // would leak it. With a query active, only discovered matches show.
+    const cards = pool[rarity].filter((c) => {
+      if (!query) return true;
+      return gameState.discoveredCards.has(`${c.speciesId}:${c.stage}`) && c.name.toLowerCase().includes(query);
+    });
     if (cards.length === 0) return '';
     return `
       <h3 class="codex-rarity-heading rarity-pill-${rarity}">${RARITY_LABELS[rarity]} <span class="codex-count">${cards.length}</span></h3>
@@ -623,15 +682,29 @@ function encyclopediaBodyHtml(): string {
   return sections.trim() ? sections : `<p class="modal-sub">No cards match "${encyclopediaQuery}".</p>`;
 }
 
+function seasonDiscoveryCount(season: Season): { discovered: number; total: number } {
+  const pool = SEASON_CARD_POOL[season];
+  let discovered = 0;
+  let total = 0;
+  for (const rarity of RARITIES) {
+    for (const c of pool[rarity]) {
+      total += 1;
+      if (gameState.discoveredCards.has(`${c.speciesId}:${c.stage}`)) discovered += 1;
+    }
+  }
+  return { discovered, total };
+}
+
 function openEncyclopediaModal() {
   const tabs = SEASONS.map(
     (season) =>
       `<button class="btn btn-small codex-tab-btn${season === encyclopediaSeason ? ' codex-tab-active' : ''}" data-season="${season}">${season}</button>`,
   ).join('');
+  const { discovered, total } = seasonDiscoveryCount(encyclopediaSeason);
 
   renderModal(`
     <h2>Card Encyclopedia</h2>
-    <p class="modal-sub">Every card in ${SEASON_SET_NAME[encyclopediaSeason]}. Prices are rough estimates — actual sale price varies by season and buyer.</p>
+    <p class="modal-sub">Discovered <strong>${discovered}/${total}</strong> in ${SEASON_SET_NAME[encyclopediaSeason]}. Undiscovered cards show as "???" until you pull one — prices are rough estimates once found.</p>
     <div class="codex-tabs">${tabs}</div>
     <input type="text" id="codex-search" class="codex-search" placeholder="Search by name..." value="${encyclopediaQuery}" />
     <div class="codex-list" id="codex-list">${encyclopediaBodyHtml()}</div>
@@ -651,6 +724,44 @@ function openEncyclopediaModal() {
     list.innerHTML = encyclopediaBodyHtml();
   });
   searchInput.focus();
+  modalLayer.querySelector('.close-btn')!.addEventListener('click', closeModal);
+}
+
+// --- Legacy (the long-run goal beyond "more gold") ---
+
+function legacyRowHtml(m: LegacyMilestone, capstone = false): string {
+  const done = m.check();
+  const prog = m.progress?.();
+  const progressHtml =
+    prog && !done
+      ? `<div class="legacy-bar"><div class="legacy-bar-fill" style="width:${Math.min(100, (prog.current / prog.target) * 100)}%"></div></div>
+         <div class="legacy-progress-label">${prog.current.toLocaleString()} / ${prog.target.toLocaleString()}</div>`
+      : '';
+  return `
+    <div class="legacy-row${done ? ' legacy-row-done' : ''}${capstone ? ' legacy-row-capstone' : ''}">
+      <div class="legacy-check">${done ? '&#10003;' : capstone ? '&#9733;' : ''}</div>
+      <div class="legacy-info">
+        <div class="legacy-name">${m.name}</div>
+        <div class="legacy-desc">${m.description}</div>
+        ${progressHtml}
+      </div>
+    </div>
+  `;
+}
+
+function openLegacyModal() {
+  const doneCount = LEGACY_MILESTONES.filter((m) => m.check()).length;
+  const capstoneDone = LEGACY_CAPSTONE.check();
+  renderModal(`
+    <h2>Valley Legacy</h2>
+    <p class="modal-sub">
+      ${capstoneDone ? "You've become a legend of this valley." : `${doneCount}/${LEGACY_MILESTONES.length} milestones complete. Gold is just the fuel — this is what it's for.`}
+    </p>
+    <div class="legacy-list">${LEGACY_MILESTONES.map((m) => legacyRowHtml(m)).join('')}</div>
+    <h2 class="modal-section-title">Capstone</h2>
+    <div class="legacy-list">${legacyRowHtml(LEGACY_CAPSTONE, true)}</div>
+    <button class="btn btn-secondary close-btn">Close</button>
+  `);
   modalLayer.querySelector('.close-btn')!.addEventListener('click', closeModal);
 }
 
@@ -682,6 +793,7 @@ export function initUI() {
       </div>
       <button id="bag-btn" class="btn btn-small">&#127890; Bag (<span id="bag-count">${gameState.inventory.length}</span>)</button>
       <button id="encyclopedia-btn" class="btn btn-small">&#128214; Cards</button>
+      <button id="legacy-btn" class="btn btn-small">&#127942; Legacy</button>
       <button id="end-day-btn" class="btn btn-small">End Day</button>
     </div>
     <div id="modal-layer"></div>
@@ -696,6 +808,7 @@ export function initUI() {
     encyclopediaSeason = gameState.season;
     openEncyclopediaModal();
   });
+  document.getElementById('legacy-btn')!.addEventListener('click', openLegacyModal);
 
   renderSeasonBadge();
 

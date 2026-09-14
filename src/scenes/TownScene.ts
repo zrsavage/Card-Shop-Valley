@@ -14,7 +14,7 @@ import type { Season } from '../game/types';
 import { humanoidTextureKey, attachCircleBody } from '../game/pixelArt';
 
 const INTERACT_RANGE = 70;
-const PLAYER_SPEED = 190;
+const PLAYER_SPEED = 240;
 
 const GROUND_TINTS: Record<Season, number> = {
   Spring: 0x8bc34a,

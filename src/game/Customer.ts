@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { gameState } from './state';
 import { SHOP_DOOR_TRIGGER } from './layout';
-import { showFloatingText } from './fx';
+import { showFloatingText, showSpeechText } from './fx';
 import { humanoidTextureKey } from './pixelArt';
 
 const CUSTOMER_DOOR_POS = { x: SHOP_DOOR_TRIGGER.x, y: 580 };
@@ -10,10 +10,12 @@ const WALK_SPEED = 130; // px/sec
 
 // Some customers never intend to buy anything — they just came to look.
 const BROWSE_ONLY_CHANCE = 0.15;
-const LOOK_PAUSE_MS = 550;
-const DECIDE_PAUSE_MS = 500;
-const NEXT_SHELF_PAUSE_MS = 250;
-const LEAVE_PAUSE_MS = 300;
+// Paced so each speech bubble (visible ~2.6s, see showSpeechText) has time
+// to actually be read before the customer moves on or leaves.
+const LOOK_PAUSE_MS = 1600;
+const DECIDE_PAUSE_MS = 1500;
+const NEXT_SHELF_PAUSE_MS = 500;
+const LEAVE_PAUSE_MS = 900;
 
 export interface ShelfTarget {
   id: string;
@@ -91,7 +93,7 @@ export function spawnCustomer(scene: Phaser.Scene, stockedShelves: ShelfTarget[]
     }
 
     if (browseOnly) {
-      showFloatingText(scene, sprite.x, sprite.y - 20, pick(['Just browsing.', 'Not today.', 'Maybe next time.']), '#6d4c41');
+      showSpeechText(scene, sprite.x, sprite.y - 20, pick(['Just browsing.', 'Not today.', 'Maybe next time.']), '#6d4c41');
       scene.time.delayedCall(LOOK_PAUSE_MS, () => visit(i + 1));
       return;
     }
@@ -100,7 +102,7 @@ export function spawnCustomer(scene: Phaser.Scene, stockedShelves: ShelfTarget[]
     const price = shelf.price;
     const ratio = price / value;
     const reaction = reactionFor(ratio);
-    showFloatingText(scene, sprite.x, sprite.y - 20, pick(reaction.lines), reaction.color);
+    showSpeechText(scene, sprite.x, sprite.y - 20, pick(reaction.lines), reaction.color);
 
     scene.time.delayedCall(DECIDE_PAUSE_MS, () => {
       // The Appraiser's Loupe upgrade makes customers more tolerant of markup.
@@ -120,7 +122,7 @@ export function spawnCustomer(scene: Phaser.Scene, stockedShelves: ShelfTarget[]
 
   function leaveShop(bought: boolean) {
     if (bought) {
-      showFloatingText(scene, sprite.x, sprite.y - 20, pick(['Thanks!', 'Pleasure doing business!', 'Love this find!']), '#2b8a3e');
+      showSpeechText(scene, sprite.x, sprite.y - 20, pick(['Thanks!', 'Pleasure doing business!', 'Love this find!']), '#2b8a3e');
     }
     scene.time.delayedCall(LEAVE_PAUSE_MS, () => {
       tweenTo(scene, sprite, CUSTOMER_DOOR_POS.x, CUSTOMER_DOOR_POS.y, () => sprite.destroy());

@@ -6,7 +6,7 @@ import type { ShelfPosition } from '../game/layout';
 import { humanoidTextureKey, attachCircleBody } from '../game/pixelArt';
 
 const INTERACT_RANGE = 70;
-const PLAYER_SPEED = 190;
+const PLAYER_SPEED = 240;
 
 interface ShelfVisual {
   id: string;

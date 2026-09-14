@@ -6,7 +6,7 @@ import { PACKS } from '../game/packs';
 import { WILDS_FROM_TOWN_POS, WILDS_TO_TOWN_TRIGGER } from '../game/layout';
 import { humanoidTextureKey, monsterTextureKey, attachCircleBody } from '../game/pixelArt';
 
-const PLAYER_SPEED = 190;
+const PLAYER_SPEED = 240;
 const MELEE_RANGE = 85;
 const ATTACK_COOLDOWN_MS = 400;
 const CONTACT_DAMAGE_COOLDOWN_MS = 900;

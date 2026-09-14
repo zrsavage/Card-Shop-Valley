@@ -244,7 +244,7 @@ html, body {
   margin-top: 12px;
 }
 
-.pack-list, .inventory-list {
+.pack-list {
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -282,18 +282,17 @@ html, body {
   color: #6d4c41;
 }
 
-.inventory-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  background: #f1e4cc;
-  border: 2px solid #2b1d0e;
-  border-radius: 12px;
-  padding: 8px;
+.pack-row-pending {
+  opacity: 0.65;
+  background: #e5d6b8;
 }
 
-.inventory-row .card-slot {
-  flex: 1;
+.pack-pending-tag {
+  font-size: 12px;
+  font-weight: 700;
+  color: #6d4c41;
+  font-style: italic;
+  white-space: nowrap;
 }
 
 .reveal-grid {
@@ -304,17 +303,45 @@ html, body {
   min-height: 40px;
 }
 
-@keyframes cardPopIn {
+/* One big card revealed at a time in a spotlight stage, instead of the
+   whole pack appearing as a static grid — each pull gets its own moment. */
+.reveal-stage {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 240px;
+  overflow: visible;
+}
+
+/* Fix the card's own width before scaling it up — .card-chip otherwise
+   fills whatever width the flex layout hands it, so a naive transform:scale
+   on an already-wide card overflows the modal instead of reading as "big". */
+.card-spotlight .card-chip {
+  width: 140px;
+}
+
+.card-spotlight {
+  transform: scale(1.35);
+  animation: cardSpotlightPop 0.45s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+.card-spotlight-flourish {
+  animation:
+    cardSpotlightPop 0.45s cubic-bezier(0.34, 1.56, 0.64, 1) both,
+    revealGlowPulse 0.65s ease-out both;
+}
+
+@keyframes cardSpotlightPop {
   0% {
-    transform: scale(0.15) rotate(-10deg);
+    transform: scale(0.2) rotate(-12deg);
     opacity: 0;
   }
-  60% {
-    transform: scale(1.1) rotate(4deg);
+  55% {
+    transform: scale(1.45) rotate(5deg);
     opacity: 1;
   }
   100% {
-    transform: scale(1) rotate(0deg);
+    transform: scale(1.35) rotate(0deg);
     opacity: 1;
   }
 }
@@ -323,27 +350,38 @@ html, body {
   0% {
     filter: drop-shadow(0 0 0 var(--glow, transparent));
   }
-  40% {
-    filter: drop-shadow(0 0 18px var(--glow, transparent));
+  45% {
+    filter: drop-shadow(0 0 22px var(--glow, transparent));
   }
   100% {
     filter: drop-shadow(0 0 0 transparent);
   }
 }
 
-.card-reveal-pop {
-  animation: cardPopIn 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+.reveal-progress {
+  display: flex;
+  justify-content: center;
+  gap: 7px;
+  margin: 10px 0 14px;
 }
 
-.card-reveal-flourish {
-  animation:
-    cardPopIn 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) both,
-    revealGlowPulse 0.7s ease-out both;
+.reveal-pip {
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: #e0cda0;
+  border: 2px solid #2b1d0e;
+  transition: background 0.2s ease, transform 0.2s ease;
+}
+
+.reveal-pip-done {
+  background: var(--pip-color, #ffb703);
+  transform: scale(1.2);
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .card-reveal-pop,
-  .card-reveal-flourish {
+  .card-spotlight,
+  .card-spotlight-flourish {
     animation: none;
   }
 }
@@ -631,4 +669,106 @@ html, body {
   font-size: 13px;
   font-weight: 700;
   flex-shrink: 0;
+}
+
+.codex-row-undiscovered {
+  opacity: 0.6;
+}
+
+.codex-thumb-undiscovered {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  font-weight: 700;
+  color: #a1887f;
+  background: #e0cda0;
+}
+
+/* --- Valley Legacy --- */
+
+.legacy-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.legacy-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  background: #f1e4cc;
+  border: 2px solid #2b1d0e;
+  border-radius: 12px;
+  padding: 10px 12px;
+  opacity: 0.75;
+}
+
+.legacy-row-done {
+  opacity: 1;
+  background: #e3f2e1;
+  border-color: #2b8a3e;
+}
+
+.legacy-row-capstone {
+  background: #f6ecff;
+  border-color: #9c4fd9;
+}
+
+.legacy-row-capstone.legacy-row-done {
+  background: #fff3d6;
+  border-color: #ffb703;
+}
+
+.legacy-check {
+  font-size: 18px;
+  font-weight: 700;
+  color: #2b8a3e;
+  width: 22px;
+  flex-shrink: 0;
+  text-align: center;
+}
+
+.legacy-row-capstone .legacy-check {
+  color: #9c4fd9;
+}
+
+.legacy-row-capstone.legacy-row-done .legacy-check {
+  color: #d98c00;
+}
+
+.legacy-info {
+  flex: 1;
+}
+
+.legacy-name {
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.legacy-desc {
+  font-size: 12px;
+  color: #6d4c41;
+  margin-top: 2px;
+}
+
+.legacy-bar {
+  margin-top: 6px;
+  height: 8px;
+  background: #e0d2b8;
+  border-radius: 5px;
+  overflow: hidden;
+  border: 2px solid #2b1d0e;
+}
+
+.legacy-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #ffd166, #fb8500);
+}
+
+.legacy-progress-label {
+  font-size: 11px;
+  color: #6d4c41;
+  margin-top: 2px;
+  font-variant-numeric: tabular-nums;
 }

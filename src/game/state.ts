@@ -30,6 +30,7 @@ export interface DaySummary {
   season: Season;
   goldEarned: number;
   cardsSold: number;
+  packsArrived: number;
 }
 
 function defaultShopUpgrades(): ShopUpgrades {
@@ -85,11 +86,24 @@ class GameState {
   paused = false;
   goldEarnedToday = 0;
   cardsSoldToday = 0;
+  /** Never decreases — the long-run stats behind the Legacy milestones,
+   * independent of how much gold or how many cards you currently have. */
+  lifetimeGoldEarned = 0;
+  lifetimeCardsSold = 0;
+  /** Every distinct card (speciesId + stage — each evolution stage is its
+   * own name/rarity) ever obtained, regardless of whether it's since been
+   * sold, gifted, or shelved — the Encyclopedia's "discovered" set. */
+  discoveredCards = new Set<string>();
 
   hp = PLAYER_BASE_MAX_HP;
   energy = PLAYER_MAX_ENERGY;
-  /** Pack ids earned from combat, awaiting a free open at the counter. */
+  /** Pack ids ready to open now — from combat drops (same day) or a
+   * purchase placed on a previous day. */
   ownedPacks: string[] = [];
+  /** Pack ids bought today — a purchase is an overnight order, not an
+   * instant open, so there's a reason to go do something else with today's
+   * energy instead of just cycling packs at the counter. */
+  pendingPacks: string[] = [];
 
   /** Always includes 'bramble', the free starting zone. */
   unlockedZones: string[] = ['bramble'];
@@ -130,6 +144,7 @@ class GameState {
 
   addGold(amount: number) {
     this.gold += amount;
+    if (amount > 0) this.lifetimeGoldEarned += amount;
     bus.emit('gold-changed', this.gold);
   }
 
@@ -142,7 +157,16 @@ class GameState {
 
   addCardsToInventory(cards: Card[]) {
     this.inventory.push(...cards);
+    let discoveredSomethingNew = false;
+    for (const card of cards) {
+      const key = `${card.speciesId}:${card.stage}`;
+      if (!this.discoveredCards.has(key)) {
+        this.discoveredCards.add(key);
+        discoveredSomethingNew = true;
+      }
+    }
     bus.emit('inventory-changed', this.inventory);
+    if (discoveredSomethingNew) bus.emit('cards-discovered', this.discoveredCards);
   }
 
   removeFromInventory(cardId: string): Card | null {
@@ -189,6 +213,7 @@ class GameState {
     this.addGold(price);
     this.goldEarnedToday += price;
     this.cardsSoldToday += 1;
+    this.lifetimeCardsSold += 1;
     bus.emit('shelves-changed', this.shelves);
     return price;
   }
@@ -298,6 +323,15 @@ class GameState {
     return true;
   }
 
+  /** Buying a pack at the counter places an overnight order — it shows up
+   * as an ownedPack (openable) the next day, not immediately. */
+  buyPackPending(packId: string, cost: number): boolean {
+    if (!this.spendGold(cost)) return false;
+    this.pendingPacks.push(packId);
+    bus.emit('packs-changed', this.ownedPacks);
+    return true;
+  }
+
   setPaused(paused: boolean) {
     this.paused = paused;
     bus.emit('paused-changed', paused);
@@ -321,11 +355,17 @@ class GameState {
       season: this.season,
       goldEarned: this.goldEarnedToday,
       cardsSold: this.cardsSoldToday,
+      packsArrived: this.pendingPacks.length,
     };
     this.day += 1;
     this.goldEarnedToday = 0;
     this.cardsSoldToday = 0;
     this.energy = this.maxEnergy;
+    if (this.pendingPacks.length > 0) {
+      this.ownedPacks.push(...this.pendingPacks);
+      this.pendingPacks = [];
+      bus.emit('packs-changed', this.ownedPacks);
+    }
     bus.emit('energy-changed', this.energy);
     bus.emit('day-changed', this.day);
     bus.emit('day-summary', summary);
