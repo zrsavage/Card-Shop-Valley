@@ -2,7 +2,7 @@ import { gameState, bus, WEAPON_TIER_DAMAGE_BONUS, VITALITY_TIER_HP_BONUS, SPEED
 import { PACKS, openPack, type PackDefinition } from '../game/packs';
 import { RARITIES, RARITY_LABELS, RARITY_BASE_VALUE, SEASON_PRICE_MULTIPLIER } from '../game/cards';
 import { NPCS, friendshipTier, FRIENDSHIP_TIER_LABELS } from '../game/npcs';
-import { generateCardArtSvg, cardArtImagePath } from '../game/cardArt';
+import { cardArtHtml } from '../game/cardArt';
 import { SEASON_SET_NAME, SEASON_CARD_POOL, STAGE_VALUE_MULTIPLIER, type SpeciesCard } from '../game/species';
 import { ZONE_DEFS } from '../game/combat';
 import { LEGACY_MILESTONES, LEGACY_CAPSTONE, type LegacyMilestone } from '../game/legacy';
@@ -31,14 +31,10 @@ function colorToCss(color: number): string {
 // print a price on them. Value is shown separately via cardSlotHtml() below,
 // as a tag alongside the card rather than baked into its frame.
 function cardChipHtml(card: Card, small = false): string {
-  const fallbackArt = generateCardArtSvg(card.speciesId, card.season, card.rarity, card.stage);
   // The illustrated image may not exist yet (art is rolled out species by
-  // species) — if it 404s, swap back to the procedural art beside it.
-  const art = `
-    <img class="card-art-img" src="${cardArtImagePath(card.speciesId)}" alt=""
-      onerror="this.style.display='none'; this.nextElementSibling.style.display='block';" />
-    <div class="card-art-fallback" style="display:none">${fallbackArt}</div>
-  `;
+  // species, sometimes stage by stage) — if it 404s, fall back through
+  // generic species art, then to the procedural art beside it.
+  const art = cardArtHtml(card.speciesId, card.stage, card.season, card.rarity, 'card-art-img', 'card-art-fallback');
   const stageBadge = card.stageCount > 1 ? `<div class="stage-badge">${card.stage}/${card.stageCount}</div>` : '';
   const setLine = small ? '' : `<div class="card-set-name">${SEASON_SET_NAME[card.season]}</div>`;
   const shinyBadge = card.shiny ? `<div class="shiny-badge">&#10022; Shiny</div>` : '';
@@ -74,11 +70,7 @@ function compactCardRowHtml(card: Card, idx: number, trailingHtml: string, highl
   const requestTag = highlight ? `<div class="codex-request-tag">&#9733; Wanted!</div>` : '';
   return `
     <div class="codex-row${highlight ? ' codex-row-requested' : ''}" data-idx="${idx}">
-      <div class="codex-thumb-wrap">
-        <img class="codex-thumb" src="${cardArtImagePath(card.speciesId)}" alt=""
-          onerror="this.style.display='none'; this.nextElementSibling.style.display='block';" />
-        <div class="codex-thumb-fallback" style="display:none">${generateCardArtSvg(card.speciesId, card.season, card.rarity, card.stage)}</div>
-      </div>
+      <div class="codex-thumb-wrap">${cardArtHtml(card.speciesId, card.stage, card.season, card.rarity, 'codex-thumb', 'codex-thumb-fallback')}</div>
       <div class="codex-info">
         <div class="codex-name">${card.name}${card.shiny ? ' <span class="shiny-tag">&#10022;</span>' : ''}</div>
         <div class="codex-meta">${RARITY_LABELS[card.rarity]} &middot; base ${card.baseValue}g</div>
@@ -1014,11 +1006,7 @@ function codexRowHtml(card: SpeciesCard): string {
     `;
   }
 
-  const art = `
-    <img class="codex-thumb" src="${cardArtImagePath(card.speciesId)}" alt=""
-      onerror="this.style.display='none'; this.nextElementSibling.style.display='block';" />
-    <div class="codex-thumb-fallback" style="display:none">${generateCardArtSvg(card.speciesId, encyclopediaSeason, card.rarity, card.stage)}</div>
-  `;
+  const art = cardArtHtml(card.speciesId, card.stage, encyclopediaSeason, card.rarity, 'codex-thumb', 'codex-thumb-fallback');
   return `
     <div class="codex-row">
       <div class="codex-thumb-wrap">${art}</div>

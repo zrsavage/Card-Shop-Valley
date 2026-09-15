@@ -233,11 +233,38 @@ function buildGolem(rand: () => number, body: string, accent: string, stage: num
 }
 
 // Path to a hand-painted illustration for this species, if one has been
-// generated (see /public/card-art). One image is shared across all of a
-// species' evolution stages; the UI falls back to the procedural SVG below
-// when the file doesn't exist yet, so art can be rolled out incrementally.
-export function cardArtImagePath(speciesId: string): string {
+// generated (see /public/card-art). When a stage-specific image exists
+// (e.g. an evolution line with distinct art per stage) it's named
+// `<speciesId>-<stage>.webp`; otherwise a single generic `<speciesId>.webp`
+// is shared across all of that species' stages. The UI falls back through
+// stage art -> generic art -> the procedural SVG below when neither file
+// exists yet, so art can be rolled out incrementally.
+export function cardArtImagePath(speciesId: string, stage?: number): string {
+  if (stage != null) return `/card-art/${speciesId}-${stage}.webp`;
   return `/card-art/${speciesId}.webp`;
+}
+
+// Builds the `<img>` + procedural-fallback markup shared by every card-art
+// call site: try the stage-specific illustration first, fall back to the
+// species' generic illustration, and finally to the procedural SVG once
+// both images 404 — so art can be added per-stage, per-species, or not at
+// all, and the UI degrades gracefully at each level.
+export function cardArtHtml(
+  speciesId: string,
+  stage: number,
+  season: Season,
+  rarity: Rarity,
+  imgClass: string,
+  fallbackClass: string,
+): string {
+  const stagePath = cardArtImagePath(speciesId, stage);
+  const genericPath = cardArtImagePath(speciesId);
+  const fallbackSvg = generateCardArtSvg(speciesId, season, rarity, stage);
+  return `
+    <img class="${imgClass}" src="${stagePath}" alt=""
+      onerror="if (!this.dataset.triedGeneric) { this.dataset.triedGeneric='1'; this.src='${genericPath}'; } else { this.style.display='none'; this.nextElementSibling.style.display='block'; }" />
+    <div class="${fallbackClass}" style="display:none">${fallbackSvg}</div>
+  `;
 }
 
 export function generateCardArtSvg(speciesId: string, season: Season, rarity: Rarity, stage: number): string {

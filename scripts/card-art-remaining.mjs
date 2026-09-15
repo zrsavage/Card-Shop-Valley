@@ -12,11 +12,13 @@ const artDir = path.join(__dirname, '..', 'public', 'card-art');
 const SEASONS = ['Spring', 'Summer', 'Fall', 'Winter'];
 const SPECIES_PER_SEASON = 150;
 
+// A species counts as "done" once it has either a generic `<speciesId>.webp`
+// or any stage-specific `<speciesId>-<stage>.webp` image.
 const done = new Set(
   existsSync(artDir)
     ? readdirSync(artDir)
         .filter((f) => f.endsWith('.webp'))
-        .map((f) => f.replace(/\.webp$/, ''))
+        .map((f) => f.replace(/\.webp$/, '').replace(/^([A-Za-z]+-\d+)-\d+$/, '$1'))
     : []
 );
 
