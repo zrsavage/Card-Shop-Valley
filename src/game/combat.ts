@@ -57,8 +57,8 @@ const HOLLOW_ENEMIES: EnemyDef[] = [
     id: 'stalker',
     name: 'Hollow Stalker',
     color: 0x2d6a4f,
-    maxHp: 60,
-    damage: 14,
+    maxHp: 90,
+    damage: 22,
     speed: 80,
     aggroRange: 150,
     radius: 14,
@@ -69,8 +69,8 @@ const HOLLOW_ENEMIES: EnemyDef[] = [
     id: 'ravager',
     name: 'Bog Ravager',
     color: 0x40514e,
-    maxHp: 110,
-    damage: 20,
+    maxHp: 170,
+    damage: 30,
     speed: 50,
     aggroRange: 180,
     radius: 22,
@@ -84,8 +84,8 @@ const FROSTBACK_ENEMIES: EnemyDef[] = [
     id: 'frostwarden',
     name: 'Frost Warden',
     color: 0x4fc3f7,
-    maxHp: 150,
-    damage: 26,
+    maxHp: 220,
+    damage: 36,
     speed: 60,
     aggroRange: 190,
     radius: 22,
@@ -96,8 +96,8 @@ const FROSTBACK_ENEMIES: EnemyDef[] = [
     id: 'colossus',
     name: 'Rime Colossus',
     color: 0xcaf0f8,
-    maxHp: 260,
-    damage: 34,
+    maxHp: 380,
+    damage: 48,
     speed: 40,
     aggroRange: 200,
     radius: 28,
@@ -136,8 +136,8 @@ const ZONE_BOSSES: Record<string, ZoneBossDef> = {
     id: 'hollow-boss',
     name: 'The Bog Mother',
     color: 0x1b4332,
-    maxHp: 380,
-    damage: 26,
+    maxHp: 450,
+    damage: 34,
     speed: 45,
     aggroRange: 240,
     radius: 34,
@@ -149,8 +149,8 @@ const ZONE_BOSSES: Record<string, ZoneBossDef> = {
     id: 'frostback-boss',
     name: 'Glacial Sovereign',
     color: 0xa2d2ff,
-    maxHp: 600,
-    damage: 38,
+    maxHp: 850,
+    damage: 55,
     speed: 40,
     aggroRange: 260,
     radius: 40,
@@ -175,6 +175,12 @@ export interface ZoneDef {
   cameraBg: string;
   groundColor: number;
   decorationColor: number;
+  /** Attack/max HP a player should have before fighting here for real —
+   * shown on the Wilds Map so a beating reads as "come back geared up",
+   * not as the game being unfair. Purely advisory; nothing stops you from
+   * walking in early and finding out the hard way. */
+  recommendedAttack: number;
+  recommendedHp: number;
 }
 
 export const ZONE_DEFS: ZoneDef[] = [
@@ -190,11 +196,13 @@ export const ZONE_DEFS: ZoneDef[] = [
     cameraBg: '#243318',
     groundColor: 0x3a5230,
     decorationColor: 0x2f4526,
+    recommendedAttack: 14,
+    recommendedHp: 100,
   },
   {
     id: 'hollow',
     name: 'Deep Hollow',
-    description: 'Tougher foes further out, with more enemies at once and better pack odds.',
+    description: 'Tougher foes further out, with more enemies at once and better pack odds. Come back once you\'ve upgraded — this ground will chew up a fresh start.',
     unlockCost: 500,
     enemies: HOLLOW_ENEMIES,
     boss: ZONE_BOSSES.hollow,
@@ -203,11 +211,13 @@ export const ZONE_DEFS: ZoneDef[] = [
     cameraBg: '#161f16',
     groundColor: 0x2d3b2a,
     decorationColor: 0x1a241a,
+    recommendedAttack: 26,
+    recommendedHp: 180,
   },
   {
     id: 'frostback',
     name: 'Frostback Reaches',
-    description: 'The hardest ground — dense, dangerous, and heavily favors Mythic packs.',
+    description: 'The hardest ground — dense, dangerous, and heavily favors Mythic packs. Not survivable without serious gear.',
     unlockCost: 1500,
     enemies: FROSTBACK_ENEMIES,
     boss: ZONE_BOSSES.frostback,
@@ -216,6 +226,8 @@ export const ZONE_DEFS: ZoneDef[] = [
     cameraBg: '#14212a',
     groundColor: 0x9fc3cc,
     decorationColor: 0x6f96a0,
+    recommendedAttack: 40,
+    recommendedHp: 280,
   },
 ];
 

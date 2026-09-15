@@ -155,6 +155,20 @@ const COMBAT_UPGRADE_DEFS: CombatUpgradeDef[] = [
     description: `+${WEAPON_TIER_DAMAGE_BONUS} more attack damage.`,
     requiresKey: 'weaponTier2',
   },
+  {
+    key: 'weaponTier4',
+    name: 'Sharpen Weapon IV',
+    cost: 1800,
+    description: `+${WEAPON_TIER_DAMAGE_BONUS} more attack damage.`,
+    requiresKey: 'weaponTier3',
+  },
+  {
+    key: 'weaponTier5',
+    name: 'Sharpen Weapon V',
+    cost: 3500,
+    description: `+${WEAPON_TIER_DAMAGE_BONUS} more attack damage — Frostback-ready.`,
+    requiresKey: 'weaponTier4',
+  },
   { key: 'vitalityTier1', name: 'Vitality I', cost: 150, description: `+${VITALITY_TIER_HP_BONUS} max HP.` },
   {
     key: 'vitalityTier2',
@@ -169,6 +183,20 @@ const COMBAT_UPGRADE_DEFS: CombatUpgradeDef[] = [
     cost: 900,
     description: `+${VITALITY_TIER_HP_BONUS} more max HP.`,
     requiresKey: 'vitalityTier2',
+  },
+  {
+    key: 'vitalityTier4',
+    name: 'Vitality IV',
+    cost: 1800,
+    description: `+${VITALITY_TIER_HP_BONUS} more max HP.`,
+    requiresKey: 'vitalityTier3',
+  },
+  {
+    key: 'vitalityTier5',
+    name: 'Vitality V',
+    cost: 3500,
+    description: `+${VITALITY_TIER_HP_BONUS} more max HP — Frostback-ready.`,
+    requiresKey: 'vitalityTier4',
   },
 ];
 
@@ -188,6 +216,20 @@ const MOVEMENT_UPGRADE_DEFS: MovementUpgradeDef[] = [
     cost: 350,
     description: `+${SPEED_TIER_BONUS} more move speed.`,
     requiresKey: 'speedTier1',
+  },
+  {
+    key: 'speedTier3',
+    name: 'Windwalker Boots',
+    cost: 800,
+    description: `+${SPEED_TIER_BONUS} more move speed.`,
+    requiresKey: 'speedTier2',
+  },
+  {
+    key: 'speedTier4',
+    name: 'Gale-Step Boots',
+    cost: 1800,
+    description: `+${SPEED_TIER_BONUS} more move speed.`,
+    requiresKey: 'speedTier3',
   },
 ];
 
@@ -735,11 +777,20 @@ function openZoneMapModal() {
     const actionHtml = unlocked
       ? `<button class="btn enter-zone-btn" data-zone="${zone.id}">Enter</button>`
       : `<button class="btn unlock-zone-btn" data-zone="${zone.id}" ${gameState.gold < zone.unlockCost ? 'disabled' : ''}>Unlock ${zone.unlockCost}g</button>`;
+    const geared = gameState.attackDamage >= zone.recommendedAttack && gameState.maxHp >= zone.recommendedHp;
+    const powerLineHtml =
+      zone.recommendedAttack > 14 || zone.recommendedHp > 100
+        ? `<div class="zone-power-line${geared ? ' zone-power-ready' : ' zone-power-under'}">
+            Recommended: ${zone.recommendedAttack} attack / ${zone.recommendedHp} HP
+            (you have ${gameState.attackDamage} / ${gameState.maxHp})${geared ? ' &#10003;' : ' — upgrade first!'}
+          </div>`
+        : '';
     return `
       <div class="pack-row">
         <div class="pack-info">
           <div class="pack-name">${zone.name}${current ? ' (current)' : ''}</div>
           <div class="pack-meta">${zone.description}</div>
+          ${powerLineHtml}
         </div>
         ${actionHtml}
       </div>

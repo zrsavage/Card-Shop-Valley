@@ -53,14 +53,22 @@ export const LEGACY_MILESTONES: LegacyMilestone[] = [
     name: 'Battle-Hardened',
     description: 'Max out every weapon upgrade.',
     check: () =>
-      gameState.combatUpgrades.weaponTier1 && gameState.combatUpgrades.weaponTier2 && gameState.combatUpgrades.weaponTier3,
+      gameState.combatUpgrades.weaponTier1 &&
+      gameState.combatUpgrades.weaponTier2 &&
+      gameState.combatUpgrades.weaponTier3 &&
+      gameState.combatUpgrades.weaponTier4 &&
+      gameState.combatUpgrades.weaponTier5,
   },
   {
     id: 'iron-will',
     name: 'Iron Will',
     description: 'Max out every vitality upgrade.',
     check: () =>
-      gameState.combatUpgrades.vitalityTier1 && gameState.combatUpgrades.vitalityTier2 && gameState.combatUpgrades.vitalityTier3,
+      gameState.combatUpgrades.vitalityTier1 &&
+      gameState.combatUpgrades.vitalityTier2 &&
+      gameState.combatUpgrades.vitalityTier3 &&
+      gameState.combatUpgrades.vitalityTier4 &&
+      gameState.combatUpgrades.vitalityTier5,
   },
   {
     id: 'pillar',

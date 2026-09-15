@@ -983,6 +983,20 @@ html, body {
   margin-bottom: 0;
 }
 
+.zone-power-line {
+  font-size: 11px;
+  font-weight: 700;
+  margin-top: 4px;
+}
+
+.zone-power-ready {
+  color: #2b8a3e;
+}
+
+.zone-power-under {
+  color: #c92a2a;
+}
+
 .set-complete-badge {
   display: inline-block;
   font-size: 12px;

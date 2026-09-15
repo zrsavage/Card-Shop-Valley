@@ -13,6 +13,7 @@ import {
 } from '../game/layout';
 import type { Season } from '../game/types';
 import { humanoidTextureKey, attachCircleBody } from '../game/pixelArt';
+import { grassTextureKey, woodTextureKey, drawTownHall, drawFountain, type FountainVisual } from '../game/sceneryArt';
 import { playFootstep } from '../game/audio';
 
 const INTERACT_RANGE = 70;
@@ -38,8 +39,8 @@ export default class TownScene extends Phaser.Scene {
   private interactKey!: Phaser.Input.Keyboard.Key;
   private promptText!: Phaser.GameObjects.Text;
   private npcVisuals: NpcVisual[] = [];
-  private ground!: Phaser.GameObjects.Rectangle;
-  private fountain!: Phaser.GameObjects.Arc;
+  private ground!: Phaser.GameObjects.TileSprite;
+  private fountain!: FountainVisual;
   private merchantVisuals: Phaser.GameObjects.GameObject[] = [];
   private merchantLabel!: Phaser.GameObjects.Text;
   private stepTimer = 0;
@@ -53,7 +54,8 @@ export default class TownScene extends Phaser.Scene {
     this.npcVisuals = [];
     this.stepTimer = 0;
 
-    this.ground = this.add.rectangle(400, 300, 760, 560, GROUND_TINTS[gameState.season]).setDepth(0);
+    const grassKey = grassTextureKey(this, GROUND_TINTS[gameState.season]);
+    this.ground = this.add.tileSprite(400, 300, 760, 560, grassKey).setDepth(0);
 
     // Shop door (top wall)
     this.add.rectangle(TOWN_SHOP_DOOR_TRIGGER.x, 32, 110, 10, 0x4a3728).setDepth(1);
@@ -69,31 +71,31 @@ export default class TownScene extends Phaser.Scene {
       .setOrigin(0.5)
       .setDepth(1);
 
-    // Fountain
-    this.add.circle(FOUNTAIN_POS.x, FOUNTAIN_POS.y, FOUNTAIN_RADIUS + 8, 0x6d4c41).setDepth(1);
-    this.fountain = this.add
-      .circle(FOUNTAIN_POS.x, FOUNTAIN_POS.y, FOUNTAIN_RADIUS, gameState.townUpgrades.fountainRepaired ? 0x4fc3f7 : 0x8d9a9a)
-      .setDepth(2);
+    // Fountain — stone rim, cracked and murky until repaired, then clear
+    // water with a few gently pulsing sparkles.
+    this.fountain = drawFountain(this, FOUNTAIN_POS.x, FOUNTAIN_POS.y, FOUNTAIN_RADIUS, gameState.townUpgrades.fountainRepaired);
 
-    // Town hall
-    this.add.rectangle(TOWN_HALL_POS.x, TOWN_HALL_POS.y, 130, 100, 0x5d4037).setDepth(2).setStrokeStyle(3, 0x3e2723);
-    this.add.rectangle(TOWN_HALL_POS.x, TOWN_HALL_POS.y - 42, 130, 16, 0xd9a066).setDepth(2);
+    // Town hall — brick walls, a peaked roof, a door, and lit windows.
+    const townHallObjs = drawTownHall(this, TOWN_HALL_POS.x, TOWN_HALL_POS.y, 130, 100);
     this.add
-      .text(TOWN_HALL_POS.x, TOWN_HALL_POS.y, 'TOWN\nHALL', { fontSize: '14px', color: '#fff5e1', align: 'center' })
+      .text(TOWN_HALL_POS.x, TOWN_HALL_POS.y + 4, 'TOWN\nHALL', { fontSize: '13px', color: '#fff5e1', align: 'center', backgroundColor: '#00000055', padding: { x: 4, y: 2 } })
       .setOrigin(0.5)
-      .setDepth(3);
+      .setDepth(4);
+    void townHallObjs;
     const townHallBody = this.physics.add.staticBody(TOWN_HALL_POS.x - 65, TOWN_HALL_POS.y - 50, 130, 100);
 
     // Traveling merchant's cart — only visible on the days it's actually in town.
     const cartWheelL = this.add.circle(MERCHANT_CART_POS.x - 24, MERCHANT_CART_POS.y + 16, 8, 0x2b1d0e).setDepth(3);
     const cartWheelR = this.add.circle(MERCHANT_CART_POS.x + 24, MERCHANT_CART_POS.y + 16, 8, 0x2b1d0e).setDepth(3);
-    const cartBody = this.add.rectangle(MERCHANT_CART_POS.x, MERCHANT_CART_POS.y, 70, 40, 0x9c6644).setDepth(3).setStrokeStyle(3, 0x2b1d0e);
-    const cartRoof = this.add.rectangle(MERCHANT_CART_POS.x, MERCHANT_CART_POS.y - 26, 84, 12, 0xc1440e).setDepth(3);
+    const cartWoodKey = woodTextureKey(this, 0x9c6644);
+    const cartBody = this.add.tileSprite(MERCHANT_CART_POS.x, MERCHANT_CART_POS.y, 70, 40, cartWoodKey).setDepth(3);
+    const cartOutline = this.add.rectangle(MERCHANT_CART_POS.x, MERCHANT_CART_POS.y, 70, 40, 0x000000, 0).setDepth(3).setStrokeStyle(3, 0x2b1d0e);
+    const cartRoof = this.add.rectangle(MERCHANT_CART_POS.x, MERCHANT_CART_POS.y - 26, 84, 12, 0xc1440e).setDepth(3).setStrokeStyle(2, 0x7a1e0e);
     this.merchantLabel = this.add
       .text(MERCHANT_CART_POS.x, MERCHANT_CART_POS.y - 42, 'Merchant', { fontSize: '11px', color: '#fff8ec', backgroundColor: '#00000088', padding: { x: 4, y: 1 } })
       .setOrigin(0.5)
       .setDepth(4);
-    this.merchantVisuals = [cartWheelL, cartWheelR, cartBody, cartRoof, this.merchantLabel];
+    this.merchantVisuals = [cartWheelL, cartWheelR, cartBody, cartOutline, cartRoof, this.merchantLabel];
     this.updateMerchantVisibility();
 
     // NPCs
@@ -165,11 +167,11 @@ export default class TownScene extends Phaser.Scene {
   }
 
   private onTownUpgradesChanged() {
-    this.fountain.setFillStyle(gameState.townUpgrades.fountainRepaired ? 0x4fc3f7 : 0x8d9a9a);
+    this.fountain.setRepaired(gameState.townUpgrades.fountainRepaired);
   }
 
   private onDayChanged() {
-    this.ground.setFillStyle(GROUND_TINTS[gameState.season]);
+    this.ground.setTexture(grassTextureKey(this, GROUND_TINTS[gameState.season]));
     this.updateMerchantVisibility();
   }
 

@@ -124,9 +124,13 @@ function defaultCombatUpgrades(): CombatUpgrades {
     weaponTier1: false,
     weaponTier2: false,
     weaponTier3: false,
+    weaponTier4: false,
+    weaponTier5: false,
     vitalityTier1: false,
     vitalityTier2: false,
     vitalityTier3: false,
+    vitalityTier4: false,
+    vitalityTier5: false,
   };
 }
 
@@ -134,6 +138,8 @@ function defaultMovementUpgrades(): MovementUpgrades {
   return {
     speedTier1: false,
     speedTier2: false,
+    speedTier3: false,
+    speedTier4: false,
   };
 }
 
@@ -232,18 +238,26 @@ class GameState {
     // Running on empty overrides upgrades entirely — exhaustion means
     // "practically defenseless," not just "a bit weaker."
     if (this.isExhausted) return EXHAUSTED_ATTACK_DAMAGE;
-    const tiers = [this.combatUpgrades.weaponTier1, this.combatUpgrades.weaponTier2, this.combatUpgrades.weaponTier3].filter(
-      Boolean,
-    ).length;
+    const tiers = [
+      this.combatUpgrades.weaponTier1,
+      this.combatUpgrades.weaponTier2,
+      this.combatUpgrades.weaponTier3,
+      this.combatUpgrades.weaponTier4,
+      this.combatUpgrades.weaponTier5,
+    ].filter(Boolean).length;
     const base = PLAYER_BASE_ATTACK_DAMAGE + tiers * WEAPON_TIER_DAMAGE_BONUS;
     const ironGripTiers = this.prestigePerks.filter((p) => p === 'ironGrip').length;
     return Math.round(base * (1 + ironGripTiers * 0.1));
   }
 
   get maxHp(): number {
-    const tiers = [this.combatUpgrades.vitalityTier1, this.combatUpgrades.vitalityTier2, this.combatUpgrades.vitalityTier3].filter(
-      Boolean,
-    ).length;
+    const tiers = [
+      this.combatUpgrades.vitalityTier1,
+      this.combatUpgrades.vitalityTier2,
+      this.combatUpgrades.vitalityTier3,
+      this.combatUpgrades.vitalityTier4,
+      this.combatUpgrades.vitalityTier5,
+    ].filter(Boolean).length;
     return PLAYER_BASE_MAX_HP + tiers * VITALITY_TIER_HP_BONUS;
   }
 
@@ -256,7 +270,12 @@ class GameState {
   }
 
   get moveSpeed(): number {
-    const tiers = [this.movementUpgrades.speedTier1, this.movementUpgrades.speedTier2].filter(Boolean).length;
+    const tiers = [
+      this.movementUpgrades.speedTier1,
+      this.movementUpgrades.speedTier2,
+      this.movementUpgrades.speedTier3,
+      this.movementUpgrades.speedTier4,
+    ].filter(Boolean).length;
     return PLAYER_BASE_SPEED + tiers * SPEED_TIER_BONUS;
   }
 

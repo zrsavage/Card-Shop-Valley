@@ -43,14 +43,20 @@ export interface CombatUpgrades {
   weaponTier1: boolean;
   weaponTier2: boolean;
   weaponTier3: boolean;
+  weaponTier4: boolean;
+  weaponTier5: boolean;
   vitalityTier1: boolean;
   vitalityTier2: boolean;
   vitalityTier3: boolean;
+  vitalityTier4: boolean;
+  vitalityTier5: boolean;
 }
 
 export interface MovementUpgrades {
   speedTier1: boolean;
   speedTier2: boolean;
+  speedTier3: boolean;
+  speedTier4: boolean;
 }
 
 /** What an NPC currently wants gifted — season + rarity, not a specific

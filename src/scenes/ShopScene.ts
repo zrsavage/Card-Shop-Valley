@@ -4,6 +4,7 @@ import { spawnCustomer } from '../game/Customer';
 import { COUNTER_POS, SHOP_ENTRANCE_POS, SHOP_DOOR_TRIGGER, SHOP_SHELF_POSITIONS } from '../game/layout';
 import type { ShelfPosition } from '../game/layout';
 import { humanoidTextureKey, attachCircleBody } from '../game/pixelArt';
+import { woodTextureKey } from '../game/sceneryArt';
 import { DECOR_ITEMS, type DecorDef } from '../game/decor';
 import { playFootstep } from '../game/audio';
 
@@ -43,8 +44,9 @@ export default class ShopScene extends Phaser.Scene {
     this.decorVisuals = new Set();
     this.stepTimer = 0;
 
-    // Floor
-    this.add.rectangle(400, 300, 760, 560, 0xe8d5b7).setDepth(0);
+    // Floor — a warm wood-plank tile instead of one flat rectangle.
+    const floorKey = woodTextureKey(this, 0xe8d5b7);
+    this.add.tileSprite(400, 300, 760, 560, floorKey).setDepth(0);
     // Door gap (walk down through here to reach the town)
     this.add.rectangle(SHOP_DOOR_TRIGGER.x, 598, 100, 8, 0x4a3728).setDepth(1);
     this.add
@@ -52,9 +54,11 @@ export default class ShopScene extends Phaser.Scene {
       .setOrigin(0.5)
       .setDepth(1);
 
-    // Counter
-    this.add.rectangle(COUNTER_POS.x, COUNTER_POS.y, 180, 60, 0x6f4e37).setDepth(2);
-    this.add.rectangle(COUNTER_POS.x, COUNTER_POS.y - 22, 180, 14, 0xd9a066).setDepth(2);
+    // Counter — a darker wood grain than the floor, plus a brass trim rail.
+    const counterWoodKey = woodTextureKey(this, 0x6f4e37);
+    this.add.tileSprite(COUNTER_POS.x, COUNTER_POS.y, 180, 60, counterWoodKey).setDepth(2);
+    this.add.rectangle(COUNTER_POS.x, COUNTER_POS.y, 180, 60, 0x000000, 0).setDepth(2).setStrokeStyle(3, 0x2b1d0e);
+    this.add.rectangle(COUNTER_POS.x, COUNTER_POS.y - 22, 180, 14, 0xd9a066).setDepth(2).setStrokeStyle(1, 0x8a6a1a);
     this.add
       .text(COUNTER_POS.x, COUNTER_POS.y, 'PACK\nCOUNTER', { fontSize: '14px', color: '#fff5e1', align: 'center' })
       .setOrigin(0.5)
@@ -160,8 +164,11 @@ export default class ShopScene extends Phaser.Scene {
 
   private createShelfVisual(pos: ShelfPosition, index: number): Phaser.Physics.Arcade.StaticBody {
     const id = `shelf-${index}`;
-    const base = this.add.rectangle(pos.x, pos.y, 90, 70, 0x8d6e63).setDepth(2);
-    base.setStrokeStyle(3, 0x5d4037);
+    const shelfWoodKey = woodTextureKey(this, 0x8d6e63);
+    this.add.tileSprite(pos.x, pos.y, 90, 70, shelfWoodKey).setDepth(2);
+    this.add.rectangle(pos.x, pos.y, 90, 70, 0x000000, 0).setDepth(2).setStrokeStyle(3, 0x5d4037);
+    // A shelf "lip" board partway down reads as an actual shelf, not a box.
+    this.add.rectangle(pos.x, pos.y + 14, 82, 4, 0x5d4037).setDepth(2);
     const cardIcon = this.add.circle(pos.x, pos.y - 8, 22, 0xffffff, 0).setDepth(3);
     const priceTag = this.add
       .text(pos.x, pos.y + 26, '', { fontSize: '13px', color: '#2b1d0e', fontStyle: 'bold' })
