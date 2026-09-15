@@ -1,6 +1,7 @@
 import { gameState, SEASONS } from './state';
 import { SEASON_CARD_POOL } from './species';
 import { RARITIES } from './cards';
+import { FISH_SPECIES } from './fishing';
 
 // A long-run goal beyond "more gold" — a fixed checklist tying together
 // every system in the game (shop, combat, town, collection), ending in one
@@ -80,6 +81,13 @@ export const LEGACY_MILESTONES: LegacyMilestone[] = [
     description: 'Earn 25,000 gold over your lifetime.',
     check: () => gameState.lifetimeGoldEarned >= 25000,
     progress: () => ({ current: Math.min(gameState.lifetimeGoldEarned, 25000), target: 25000 }),
+  },
+  {
+    id: 'angler',
+    name: 'Master Angler',
+    description: `Catch all ${FISH_SPECIES.length} fish species at the fountain.`,
+    check: () => Object.keys(gameState.fishCaught).length >= FISH_SPECIES.length,
+    progress: () => ({ current: Object.keys(gameState.fishCaught).length, target: FISH_SPECIES.length }),
   },
 ];
 

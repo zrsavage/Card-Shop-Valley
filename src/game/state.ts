@@ -21,6 +21,7 @@ import { rollTownBoard } from './townBoard';
 import { rollMerchantOffers, MERCHANT_VISIT_CHANCE } from './merchant';
 import { PRESTIGE_PERKS } from './prestige';
 import { OUTFITS } from './outfits';
+import { rollFish, FISHING_ENERGY_COST, type FishDef } from './fishing';
 import { DECOR_ITEMS } from './decor';
 
 export const bus = new Phaser.Events.EventEmitter();
@@ -181,10 +182,17 @@ class GameState {
   enemiesDefeatedToday = 0;
   giftsGivenToday = 0;
   packsOpenedToday = 0;
+  fishCaughtToday = 0;
+
+  /** Lifetime count of each fish species caught at the fountain — the Fish
+   * Codex's "discovered" set, and survives prestige like the card
+   * Encyclopedia does. */
+  fishCaught: Record<string, number> = {};
+  lifetimeFishCaught = 0;
 
   /** Daily objectives posted at the Town Hall — rerolled (unclaimed rewards
    * lost) every time the day ends. */
-  townBoard: BoardObjective[] = rollTownBoard();
+  townBoard: BoardObjective[] = rollTownBoard(false);
 
   /** Set (with rolled offers) only on the days the traveling merchant is
    * actually in town — null the rest of the time. */
@@ -520,6 +528,8 @@ class GameState {
         return this.packsOpenedToday;
       case 'goldEarned':
         return this.goldEarnedToday;
+      case 'fishCaught':
+        return this.fishCaughtToday;
     }
   }
 
@@ -611,7 +621,8 @@ class GameState {
     this.enemiesDefeatedToday = 0;
     this.giftsGivenToday = 0;
     this.packsOpenedToday = 0;
-    this.townBoard = rollTownBoard();
+    this.fishCaughtToday = 0;
+    this.townBoard = rollTownBoard(false);
     this.merchantVisit = null;
     this.shinyCharmActive = false;
     this.hp = this.maxHp;
@@ -701,6 +712,26 @@ class GameState {
     return true;
   }
 
+  /** Casts a line at the fountain — requires it be repaired, and a full
+   * cast's worth of energy up front (never partially drains you below what
+   * it costs). A quiet, no-risk way to spend energy for a small, reliable
+   * bit of gold instead of the Wilds or nothing at all. */
+  castFishingLine(): { fish: FishDef; goldEarned: number } | null {
+    if (!this.townUpgrades.fountainRepaired) return null;
+    if (this.energy < FISHING_ENERGY_COST) return null;
+    this.energy -= FISHING_ENERGY_COST;
+    bus.emit('energy-changed', this.energy);
+
+    const fish = rollFish();
+    const goldEarned = Math.round(fish.minValue + Math.random() * (fish.maxValue - fish.minValue));
+    this.addGold(goldEarned);
+    this.fishCaught[fish.id] = (this.fishCaught[fish.id] ?? 0) + 1;
+    this.lifetimeFishCaught += 1;
+    this.fishCaughtToday += 1;
+    bus.emit('board-progress-changed');
+    return { fish, goldEarned };
+  }
+
   setPaused(paused: boolean) {
     this.paused = paused;
     bus.emit('paused-changed', paused);
@@ -734,13 +765,14 @@ class GameState {
     this.enemiesDefeatedToday = 0;
     this.giftsGivenToday = 0;
     this.packsOpenedToday = 0;
+    this.fishCaughtToday = 0;
     this.energy = this.maxEnergy;
     if (this.pendingPacks.length > 0) {
       this.ownedPacks.push(...this.pendingPacks);
       this.pendingPacks = [];
       bus.emit('packs-changed', this.ownedPacks);
     }
-    this.townBoard = rollTownBoard();
+    this.townBoard = rollTownBoard(this.townUpgrades.fountainRepaired);
     this.merchantVisit = Math.random() < MERCHANT_VISIT_CHANCE ? { day: this.day, offers: rollMerchantOffers() } : null;
     bus.emit('energy-changed', this.energy);
     bus.emit('day-changed', this.day);

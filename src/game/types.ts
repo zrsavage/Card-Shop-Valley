@@ -71,7 +71,7 @@ export interface NpcState {
 export interface BoardObjective {
   id: string;
   description: string;
-  metric: 'cardsSold' | 'enemiesDefeated' | 'giftsGiven' | 'packsOpened' | 'goldEarned';
+  metric: 'cardsSold' | 'enemiesDefeated' | 'giftsGiven' | 'packsOpened' | 'goldEarned' | 'fishCaught';
   target: number;
   reward: number;
   claimed: boolean;

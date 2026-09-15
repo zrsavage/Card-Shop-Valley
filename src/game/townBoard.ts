@@ -43,14 +43,22 @@ const OBJECTIVE_TEMPLATES: ObjectiveTemplate[] = [
     targets: [50, 100, 150],
     goldPerUnit: 0.55,
   },
+  {
+    metric: 'fishCaught',
+    describe: (n) => `Catch ${n} fish at the fountain`,
+    targets: [2, 3, 5],
+    goldPerUnit: 14,
+  },
 ];
 
 let objectiveCounter = 0;
 
 /** Rolls 3 objectives against distinct metrics so a day's board always
- * touches a spread of the game's systems rather than three of the same thing. */
-export function rollTownBoard(): BoardObjective[] {
-  const pool = [...OBJECTIVE_TEMPLATES];
+ * touches a spread of the game's systems rather than three of the same thing.
+ * Fishing only enters the pool once the fountain's actually usable, so a
+ * fresh save is never handed an objective it has no way to complete yet. */
+export function rollTownBoard(fountainRepaired: boolean): BoardObjective[] {
+  const pool = OBJECTIVE_TEMPLATES.filter((t) => t.metric !== 'fishCaught' || fountainRepaired);
   const picked: BoardObjective[] = [];
   for (let i = 0; i < 3 && pool.length > 0; i++) {
     const idx = Math.floor(Math.random() * pool.length);

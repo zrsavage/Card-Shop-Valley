@@ -41,6 +41,8 @@ interface SaveData {
   ownedOutfits: string[];
   equippedOutfitId: string;
   ownedDecor: string[];
+  fishCaught: Record<string, number>;
+  lifetimeFishCaught: number;
 }
 
 export function saveGame() {
@@ -73,6 +75,8 @@ export function saveGame() {
       ownedOutfits: gameState.ownedOutfits,
       equippedOutfitId: gameState.equippedOutfitId,
       ownedDecor: gameState.ownedDecor,
+      fishCaught: gameState.fishCaught,
+      lifetimeFishCaught: gameState.lifetimeFishCaught,
     };
     localStorage.setItem(SAVE_KEY, JSON.stringify(data));
   } catch {
@@ -126,6 +130,8 @@ export function loadGame(): boolean {
     if (Array.isArray(data.ownedOutfits)) gameState.ownedOutfits = data.ownedOutfits;
     if (typeof data.equippedOutfitId === 'string') gameState.equippedOutfitId = data.equippedOutfitId;
     if (Array.isArray(data.ownedDecor)) gameState.ownedDecor = data.ownedDecor;
+    if (data.fishCaught) Object.assign(gameState.fishCaught, data.fishCaught);
+    if (typeof data.lifetimeFishCaught === 'number') gameState.lifetimeFishCaught = data.lifetimeFishCaught;
     return true;
   } catch {
     return false;

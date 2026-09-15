@@ -238,15 +238,16 @@ export default class TownScene extends Phaser.Scene {
     }
   }
 
-  private nearestInteractable(): { type: 'townhall' | 'npc' | 'wildsgate' | 'merchant'; id?: string; x: number; y: number } | null {
+  private nearestInteractable(): { type: 'townhall' | 'npc' | 'wildsgate' | 'merchant' | 'fountain'; id?: string; x: number; y: number } | null {
     const merchantActive = gameState.merchantVisit?.day === gameState.day;
-    const candidates: { type: 'townhall' | 'npc' | 'wildsgate' | 'merchant'; id?: string; x: number; y: number }[] = [
+    const candidates: { type: 'townhall' | 'npc' | 'wildsgate' | 'merchant' | 'fountain'; id?: string; x: number; y: number }[] = [
       { type: 'townhall', x: TOWN_HALL_POS.x, y: TOWN_HALL_POS.y },
       { type: 'wildsgate', x: TOWN_TO_WILDS_TRIGGER.x, y: TOWN_TO_WILDS_TRIGGER.y },
       ...this.npcVisuals.map((v) => ({ type: 'npc' as const, id: v.id, x: v.sprite.x, y: v.sprite.y })),
       ...(merchantActive ? [{ type: 'merchant' as const, x: MERCHANT_CART_POS.x, y: MERCHANT_CART_POS.y }] : []),
+      ...(gameState.townUpgrades.fountainRepaired ? [{ type: 'fountain' as const, x: FOUNTAIN_POS.x, y: FOUNTAIN_POS.y }] : []),
     ];
-    let best: { type: 'townhall' | 'npc' | 'wildsgate' | 'merchant'; id?: string; x: number; y: number } | null = null;
+    let best: { type: 'townhall' | 'npc' | 'wildsgate' | 'merchant' | 'fountain'; id?: string; x: number; y: number } | null = null;
     let bestDist = INTERACT_RANGE;
     for (const c of candidates) {
       const d = Phaser.Math.Distance.Between(this.player.x, this.player.y, c.x, c.y);
@@ -268,7 +269,9 @@ export default class TownScene extends Phaser.Scene {
             ? 'Press E: Wilds'
             : target.type === 'merchant'
               ? 'Press E: Merchant'
-              : `Press E: Talk`;
+              : target.type === 'fountain'
+                ? 'Press E: Fish'
+                : `Press E: Talk`;
       this.promptText.setText(label).setPosition(target.x, target.y - 45).setVisible(true);
     } else {
       this.promptText.setVisible(false);
@@ -281,6 +284,8 @@ export default class TownScene extends Phaser.Scene {
         bus.emit('open-zonemap');
       } else if (target.type === 'merchant') {
         bus.emit('open-merchant');
+      } else if (target.type === 'fountain') {
+        bus.emit('open-fountain');
       } else {
         bus.emit('open-npc', target.id);
       }

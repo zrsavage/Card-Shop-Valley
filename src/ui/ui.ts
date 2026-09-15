@@ -12,6 +12,7 @@ import type { Card, ShopUpgrades, TownUpgrades, CombatUpgrades, MovementUpgrades
 import { PRESTIGE_PERKS } from '../game/prestige';
 import { OUTFITS, type OutfitDef } from '../game/outfits';
 import { DECOR_ITEMS, type DecorDef } from '../game/decor';
+import { FISH_SPECIES, FISHING_ENERGY_COST, type FishDef } from '../game/fishing';
 
 /** Rush cost is a steep premium over the overnight price — pay for
  * convenience, not a strictly better deal than waiting. */
@@ -126,7 +127,7 @@ interface TownUpgradeDef {
 }
 
 const TOWN_UPGRADE_DEFS: TownUpgradeDef[] = [
-  { key: 'fountainRepaired', name: 'Repair the Fountain', cost: 250, description: 'Talking to townsfolk earns a bit more friendship.' },
+  { key: 'fountainRepaired', name: 'Repair the Fountain', cost: 250, description: 'Talking to townsfolk earns a bit more friendship, and unlocks fishing at the fountain.' },
   { key: 'festivalsUnlocked', name: 'Sponsor the Festival', cost: 600, description: 'Every 7th day becomes a Festival with a rush of customers.' },
 ];
 
@@ -813,6 +814,81 @@ function openMerchantModal() {
   modalLayer.querySelector('.close-btn')!.addEventListener('click', closeModal);
 }
 
+// --- Fountain fishing (an energy-for-gold side activity independent of
+// both the Wilds and the shop, with its own short Fish Codex to complete) ---
+
+function fishCodexRowHtml(fish: FishDef): string {
+  const count = gameState.fishCaught[fish.id] ?? 0;
+  if (count === 0) {
+    return `
+      <div class="codex-row codex-row-undiscovered">
+        <div class="codex-thumb-wrap codex-thumb-undiscovered">?</div>
+        <div class="codex-info">
+          <div class="codex-name">???</div>
+          <div class="codex-meta">${RARITY_LABELS[fish.rarity]} &middot; not yet caught</div>
+        </div>
+      </div>
+    `;
+  }
+  return `
+    <div class="codex-row">
+      <div class="codex-thumb-wrap"><div class="fish-icon">&#128031;</div></div>
+      <div class="codex-info">
+        <div class="codex-name">${fish.name}</div>
+        <div class="codex-meta">${RARITY_LABELS[fish.rarity]} &middot; caught &times;${count}</div>
+      </div>
+    </div>
+  `;
+}
+
+function openFountainModal(result?: { fish: FishDef; goldEarned: number }) {
+  if (!gameState.townUpgrades.fountainRepaired) {
+    closeModal();
+    return;
+  }
+  const canCast = gameState.energy >= FISHING_ENERGY_COST;
+  const resultHtml = result
+    ? `<div class="gift-feedback${result.fish.rarity === 'legendary' || result.fish.rarity === 'epic' ? ' gift-feedback-match' : ''}">
+        Caught a <strong>${result.fish.name}</strong>! &middot; +${result.goldEarned}g
+        <div class="fish-flavor">"${result.fish.flavor}"</div>
+      </div>`
+    : '';
+  const caughtCount = Object.keys(gameState.fishCaught).length;
+
+  renderModal(`
+    <h2>The Fountain</h2>
+    <p class="modal-sub">Toss a line in and see what bites — ${FISHING_ENERGY_COST} energy a cast, for a small, reliable bit of gold. No risk, no cards, just something else to do with the day.</p>
+    ${resultHtml}
+    <div class="modal-actions">
+      <button class="btn cast-line-btn" ${canCast ? '' : 'disabled'}>${canCast ? 'Cast Line' : 'Too tired to fish'}</button>
+    </div>
+    <h2 class="modal-section-title">Fish Codex &middot; ${caughtCount}/${FISH_SPECIES.length}</h2>
+    <div class="codex-list">${FISH_SPECIES.map(fishCodexRowHtml).join('')}</div>
+    <button class="btn btn-secondary close-btn">Close</button>
+  `);
+
+  const castBtn = modalLayer.querySelector('.cast-line-btn') as HTMLButtonElement | null;
+  castBtn?.addEventListener('click', () => {
+    castBtn.disabled = true;
+    castBtn.textContent = 'Waiting for a bite...';
+    setTimeout(() => {
+      // The modal may have been closed (or replaced) during the wait —
+      // bail out rather than yanking the player back into it.
+      if (!castBtn.isConnected) return;
+      const catchResult = gameState.castFishingLine();
+      if (!catchResult) {
+        playError();
+        openFountainModal();
+        return;
+      }
+      if (catchResult.fish.rarity === 'legendary') playLegendary();
+      else playCoin();
+      openFountainModal(catchResult);
+    }, 550);
+  });
+  modalLayer.querySelector('.close-btn')!.addEventListener('click', closeModal);
+}
+
 // --- Customize (outfits + shop decor — pure cosmetics, no gameplay effect) ---
 
 function outfitRowHtml(outfit: OutfitDef): string {
@@ -1374,5 +1450,6 @@ export function initUI() {
   bus.on('open-townhall', openTownHallModal);
   bus.on('open-zonemap', openZoneMapModal);
   bus.on('open-merchant', openMerchantModal);
+  bus.on('open-fountain', () => openFountainModal());
   bus.on('open-npc', (npcId: string) => openNpcModal(npcId));
 }
