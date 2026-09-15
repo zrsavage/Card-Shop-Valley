@@ -18,6 +18,15 @@ export interface PackDefinition {
   sellValue: number;
 }
 
+// Rarity odds are intentionally stingy — since a card's evolution stage
+// (and so its value multiplier, see STAGE_VALUE_MULTIPLIER) is fixed by its
+// rarity, an epic or legendary pull is worth many times a common one, and
+// packs need to feel like they're rationing that rather than handing it
+// out. Starter and Deluxe are what regular Wilds kills mostly drop, so
+// their shot at anything above uncommon stays extremely low; Mythic (the
+// guaranteed boss/late-zone drop) is clearly the best of the three but its
+// own legendary odds stay low too, so even a boss kill is a nice step up
+// rather than a jackpot.
 export const PACKS: PackDefinition[] = [
   {
     id: 'starter',
@@ -25,7 +34,7 @@ export const PACKS: PackDefinition[] = [
     cost: 15,
     cardCount: 3,
     color: 0x8bd3ff,
-    weights: { common: 65, uncommon: 25, rare: 8, epic: 2, legendary: 0 },
+    weights: { common: 800, uncommon: 165, rare: 30, epic: 4, legendary: 1 },
     sellValue: 20,
   },
   {
@@ -34,7 +43,7 @@ export const PACKS: PackDefinition[] = [
     cost: 45,
     cardCount: 4,
     color: 0xffd166,
-    weights: { common: 40, uncommon: 32, rare: 20, epic: 7, legendary: 1 },
+    weights: { common: 650, uncommon: 260, rare: 75, epic: 13, legendary: 2 },
     sellValue: 60,
   },
   {
@@ -43,7 +52,7 @@ export const PACKS: PackDefinition[] = [
     cost: 120,
     cardCount: 5,
     color: 0xc77dff,
-    weights: { common: 15, uncommon: 25, rare: 30, epic: 22, legendary: 8 },
+    weights: { common: 350, uncommon: 320, rare: 220, epic: 90, legendary: 20 },
     sellValue: 180,
   },
 ];
