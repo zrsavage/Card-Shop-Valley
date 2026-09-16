@@ -24,9 +24,13 @@ export function priceReactionFor(ratio: number): PriceReactionTier {
 }
 
 /** Same odds Customer.ts rolls against — surfaced so the pricing preview
- * can show more than just a mood, without duplicating the formula. */
-export function buyChanceFor(ratio: number, appraisersLoupe: boolean): number {
-  return appraisersLoupe
-    ? Math.max(0.1, Math.min(0.97, 1.5 - ratio * 0.65))
-    : Math.max(0.05, Math.min(0.95, 1.3 - ratio * 0.8));
+ * can show more than just a mood, without duplicating the formula.
+ * `silverTongue` (the Commerce perk) stacks an extra flat tolerance bonus
+ * on top of whatever the loupe already gives. */
+export function buyChanceFor(ratio: number, appraisersLoupe: boolean, silverTongue = false): number {
+  const base = appraisersLoupe ? 1.5 : 1.3;
+  const slope = appraisersLoupe ? 0.65 : 0.8;
+  const bonus = silverTongue ? 0.15 : 0;
+  const floor = appraisersLoupe ? 0.1 : 0.05;
+  return Math.max(floor, Math.min(0.97, base + bonus - ratio * slope));
 }

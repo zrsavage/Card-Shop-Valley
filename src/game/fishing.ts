@@ -35,8 +35,16 @@ const FISH_RARITY_WEIGHTS: Record<Rarity, number> = { common: 50, uncommon: 30, 
 
 export const FISHING_ENERGY_COST = 10;
 
-export function rollFish(): FishDef {
-  const entries = Object.entries(FISH_RARITY_WEIGHTS) as [Rarity, number][];
+/** With the Lucky Hook perk, rare-or-better weights are boosted (common
+ * trimmed to compensate) rather than just added on top, so the odds still
+ * sum the same way. */
+function luckyWeights(): Record<Rarity, number> {
+  return { common: 35, uncommon: 33, rare: 20, epic: 9, legendary: 3 };
+}
+
+export function rollFish(lucky = false): FishDef {
+  const weights = lucky ? luckyWeights() : FISH_RARITY_WEIGHTS;
+  const entries = Object.entries(weights) as [Rarity, number][];
   const total = entries.reduce((sum, [, w]) => sum + w, 0);
   let roll = Math.random() * total;
   let rarity: Rarity = 'common';

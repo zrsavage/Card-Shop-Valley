@@ -23,6 +23,7 @@ import { PRESTIGE_PERKS } from './prestige';
 import { OUTFITS } from './outfits';
 import { rollFish, FISHING_ENERGY_COST, type FishDef } from './fishing';
 import { DECOR_ITEMS } from './decor';
+import { PERKS } from './perks';
 
 export const bus = new Phaser.Events.EventEmitter();
 
@@ -172,6 +173,10 @@ class GameState {
   ownedOutfits: string[] = ['default'];
   equippedOutfitId = 'default';
   ownedDecor: string[] = [];
+
+  /** Permanent perk-tree unlocks — like the Encyclopedia and lifetime
+   * stats, these survive Prestige rather than resetting with everything else. */
+  unlockedPerks: string[] = [];
 
   paused = false;
   goldEarnedToday = 0;
@@ -330,10 +335,48 @@ class GameState {
   }
 
   /** Combined bonus applied to shop sale prices: prestige's Golden Touch
-   * perk plus a small permanent bump per fully-discovered season. */
+   * perk, a small permanent bump per fully-discovered season, and the
+   * Fair Trade perk-tree unlock. */
   get saleGoldMultiplier(): number {
     const goldenTouchTiers = this.prestigePerks.filter((p) => p === 'goldenTouch').length;
-    return 1 + goldenTouchTiers * 0.1 + this.completedSeasons.length * 0.05;
+    const fairTrade = this.hasPerk('fairTrade') ? 0.05 : 0;
+    return 1 + goldenTouchTiers * 0.1 + this.completedSeasons.length * 0.05 + fairTrade;
+  }
+
+  hasPerk(id: string): boolean {
+    return this.unlockedPerks.includes(id);
+  }
+
+  purchasePerk(id: string): boolean {
+    const def = PERKS.find((p) => p.id === id);
+    if (!def || this.hasPerk(id)) return false;
+    if (def.requiresId && !this.hasPerk(def.requiresId)) return false;
+    if (!this.spendGold(def.cost)) return false;
+    this.unlockedPerks.push(id);
+    bus.emit('perks-changed', this.unlockedPerks);
+    return true;
+  }
+
+  /** Bonus gold multiplier on a zone boss's flat gold reward — the Boss
+   * Bounty perk. */
+  get bossGoldMultiplier(): number {
+    return this.hasPerk('bossBounty') ? 1.15 : 1;
+  }
+
+  /** HP regen rate multiplier while out of combat — the Second Wind perk. */
+  get regenRateMultiplier(): number {
+    return this.hasPerk('secondWind') ? 1.5 : 1;
+  }
+
+  /** Attack cooldown multiplier in the Wilds — the Battle Instinct perk. */
+  get attackCooldownMultiplier(): number {
+    return this.hasPerk('battleInstinct') ? 0.85 : 1;
+  }
+
+  /** Extra combined chance of a bulk-buyer/big-spender customer spawning —
+   * the Bulk Relations perk, added on top of the reputation tier's own odds. */
+  get bulkRelationsBonus(): number {
+    return this.hasPerk('bulkRelations') ? 0.1 : 0;
   }
 
   addGold(amount: number) {
@@ -496,7 +539,7 @@ class GameState {
   talkToNpc(npcId: string): { alreadyTalkedToday: boolean; gain: number } {
     const npc = this.npcs[npcId];
     if (npc.lastTalkedDay === this.day) return { alreadyTalkedToday: true, gain: 0 };
-    const gain = this.townUpgrades.fountainRepaired ? 3 : 2;
+    const gain = (this.townUpgrades.fountainRepaired ? 3 : 2) + (this.hasPerk('friendlyFace') ? 1 : 0);
     npc.friendship = Math.min(100, npc.friendship + gain);
     npc.lastTalkedDay = this.day;
     bus.emit('npc-changed', npcId);
@@ -699,7 +742,8 @@ class GameState {
   /** Sells one owned (combat-dropped) pack, unopened, for a guaranteed price. */
   sellOwnedPack(packId: string, price: number): boolean {
     if (!this.consumeOwnedPack(packId)) return false;
-    this.addGold(price);
+    const bonus = this.hasPerk('treasureSense') ? 1.15 : 1;
+    this.addGold(Math.round(price * bonus));
     return true;
   }
 
@@ -737,11 +781,12 @@ class GameState {
    * bit of gold instead of the Wilds or nothing at all. */
   castFishingLine(): { fish: FishDef; goldEarned: number } | null {
     if (!this.townUpgrades.fountainRepaired) return null;
-    if (this.energy < FISHING_ENERGY_COST) return null;
-    this.energy -= FISHING_ENERGY_COST;
+    const cost = this.hasPerk('patientAngler') ? Math.round(FISHING_ENERGY_COST * 0.8) : FISHING_ENERGY_COST;
+    if (this.energy < cost) return null;
+    this.energy -= cost;
     bus.emit('energy-changed', this.energy);
 
-    const fish = rollFish();
+    const fish = rollFish(this.hasPerk('luckyHook'));
     const goldEarned = Math.round(fish.minValue + Math.random() * (fish.maxValue - fish.minValue));
     this.addGold(goldEarned);
     this.fishCaught[fish.id] = (this.fishCaught[fish.id] ?? 0) + 1;
@@ -761,8 +806,10 @@ class GameState {
   tickEnergy(deltaMs: number, extraDrainPerSec = 0) {
     if (this.paused) return;
     const enduringSpiritTiers = this.prestigePerks.filter((p) => p === 'enduringSpirit').length;
-    const drainMultiplier = Math.max(0.1, 1 - enduringSpiritTiers * 0.15);
-    const drain = (ENERGY_DRAIN_PER_SEC + extraDrainPerSec) * drainMultiplier * (deltaMs / 1000);
+    const perkTravelerBonus = this.hasPerk('efficientTraveler') ? 0.1 : 0;
+    const drainMultiplier = Math.max(0.1, 1 - enduringSpiritTiers * 0.15 - perkTravelerBonus);
+    const wildsExtraMultiplier = this.hasPerk('lightFeet') ? 0.9 : 1;
+    const drain = (ENERGY_DRAIN_PER_SEC + extraDrainPerSec * wildsExtraMultiplier) * drainMultiplier * (deltaMs / 1000);
     if (drain <= 0) return;
     this.energy = Math.max(0, this.energy - drain);
     bus.emit('energy-changed', this.energy);

@@ -86,9 +86,13 @@ function tweenTo(scene: Phaser.Scene, target: Phaser.GameObjects.Sprite, x: numb
  * bulk buyer who checks nearly every shelf instead of just one or two. */
 function rollArchetype(): 'normal' | 'bulkBuyer' | 'bigSpender' {
   const tier = gameState.reputationTier;
+  // The Bulk Relations perk splits its bonus evenly across both archetypes.
+  const perkBonus = gameState.bulkRelationsBonus / 2;
+  const bigSpenderChance = tier.bigSpenderChance + perkBonus;
+  const bulkBuyerChance = tier.bulkBuyerChance + perkBonus;
   const roll = Math.random();
-  if (roll < tier.bigSpenderChance) return 'bigSpender';
-  if (roll < tier.bigSpenderChance + tier.bulkBuyerChance) return 'bulkBuyer';
+  if (roll < bigSpenderChance) return 'bigSpender';
+  if (roll < bigSpenderChance + bulkBuyerChance) return 'bulkBuyer';
   return 'normal';
 }
 
@@ -147,7 +151,7 @@ export function spawnCustomer(scene: Phaser.Scene, stockedShelves: ShelfTarget[]
       // (the speech line above is unaffected), but is far more forgiving
       // when it actually comes to paying it.
       const effectiveRatio = archetype === 'bigSpender' ? ratio * 0.6 : ratio;
-      const buyChance = buyChanceFor(effectiveRatio, gameState.shopUpgrades.appraisersLoupe);
+      const buyChance = buyChanceFor(effectiveRatio, gameState.shopUpgrades.appraisersLoupe, gameState.hasPerk('silverTongue'));
       const willBuy = Math.random() < buyChance;
 
       if (willBuy) {

@@ -13,6 +13,7 @@ import { PRESTIGE_PERKS } from '../game/prestige';
 import { OUTFITS, type OutfitDef } from '../game/outfits';
 import { DECOR_ITEMS, type DecorDef } from '../game/decor';
 import { FISH_SPECIES, FISHING_ENERGY_COST, type FishDef } from '../game/fishing';
+import { PERKS, PERK_BRANCH_LABELS, type PerkBranch } from '../game/perks';
 
 /** Rush cost is a steep premium over the overnight price — pay for
  * convenience, not a strictly better deal than waiting. */
@@ -1335,14 +1336,46 @@ function wireDayTab() {
   });
 }
 
+// --- Perk tree (permanent, gold-bought passive bonuses — survives Prestige) ---
+
+const PERK_BRANCH_ORDER: PerkBranch[] = ['combat', 'commerce', 'wilds', 'fishing'];
+
+function perksTabHtml(): string {
+  const sections = PERK_BRANCH_ORDER.map((branch) => {
+    const rows = PERKS.filter((p) => p.branch === branch)
+      .map((def) => {
+        const owned = gameState.hasPerk(def.id);
+        const locked = !!def.requiresId && !gameState.hasPerk(def.requiresId);
+        return upgradeRowHtml(def.id, def.name, def.cost, def.description, owned, locked);
+      })
+      .join('');
+    return `<h2 class="modal-section-title">${PERK_BRANCH_LABELS[branch]}</h2><div class="pack-list">${rows}</div>`;
+  }).join('');
+  return `<p class="modal-sub">Permanent passive bonuses, bought with gold — unlike Prestige, these never reset.</p>${sections}`;
+}
+
+function wirePerksTab() {
+  modalLayer.querySelectorAll<HTMLButtonElement>('.buy-upgrade-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      if (!gameState.purchasePerk(btn.dataset.key!)) {
+        playError();
+        return;
+      }
+      playChime();
+      openMenuModal('perks');
+    });
+  });
+}
+
 // --- Menu (tabbed: Bag / Cards / Legacy / Customize / Day) ---
 
-type MenuTab = 'bag' | 'cards' | 'legacy' | 'customize' | 'day';
+type MenuTab = 'bag' | 'cards' | 'legacy' | 'perks' | 'customize' | 'day';
 
 const MENU_TABS: { id: MenuTab; label: string }[] = [
   { id: 'bag', label: '&#127890; Bag' },
   { id: 'cards', label: '&#128214; Cards' },
   { id: 'legacy', label: '&#127942; Legacy' },
+  { id: 'perks', label: '&#127775; Perks' },
   { id: 'customize', label: '&#127912; Customize' },
   { id: 'day', label: '&#9203; Day' },
 ];
@@ -1361,9 +1394,11 @@ function openMenuModal(tab: MenuTab = activeMenuTab) {
         ? cardsTabHtml()
         : tab === 'legacy'
           ? legacyTabHtml()
-          : tab === 'customize'
-            ? customizeTabHtml()
-            : dayTabHtml();
+          : tab === 'perks'
+            ? perksTabHtml()
+            : tab === 'customize'
+              ? customizeTabHtml()
+              : dayTabHtml();
 
   renderModal(`
     <h2>Menu</h2>
@@ -1383,6 +1418,7 @@ function openMenuModal(tab: MenuTab = activeMenuTab) {
   });
   if (tab === 'cards') wireCardsTab();
   else if (tab === 'legacy') wireLegacyTab();
+  else if (tab === 'perks') wirePerksTab();
   else if (tab === 'customize') wireCustomizeTab();
   else if (tab === 'day') wireDayTab();
 

@@ -43,6 +43,7 @@ interface SaveData {
   ownedDecor: string[];
   fishCaught: Record<string, number>;
   lifetimeFishCaught: number;
+  unlockedPerks: string[];
 }
 
 export function saveGame() {
@@ -77,6 +78,7 @@ export function saveGame() {
       ownedDecor: gameState.ownedDecor,
       fishCaught: gameState.fishCaught,
       lifetimeFishCaught: gameState.lifetimeFishCaught,
+      unlockedPerks: gameState.unlockedPerks,
     };
     localStorage.setItem(SAVE_KEY, JSON.stringify(data));
   } catch {
@@ -132,6 +134,7 @@ export function loadGame(): boolean {
     if (Array.isArray(data.ownedDecor)) gameState.ownedDecor = data.ownedDecor;
     if (data.fishCaught) Object.assign(gameState.fishCaught, data.fishCaught);
     if (typeof data.lifetimeFishCaught === 'number') gameState.lifetimeFishCaught = data.lifetimeFishCaught;
+    if (Array.isArray(data.unlockedPerks)) gameState.unlockedPerks = data.unlockedPerks;
     return true;
   } catch {
     return false;
@@ -174,4 +177,5 @@ export function initAutosave() {
   bus.on('prestige', queueSave);
   bus.on('movement-upgrades-changed', queueSave);
   bus.on('cosmetics-changed', queueSave);
+  bus.on('perks-changed', queueSave);
 }

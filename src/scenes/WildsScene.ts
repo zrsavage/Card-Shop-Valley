@@ -187,7 +187,7 @@ export default class WildsScene extends Phaser.Scene {
   private handleAttack() {
     if (this.attackCooldownRemaining > 0) return;
     if (!Phaser.Input.Keyboard.JustDown(this.attackKey)) return;
-    this.attackCooldownRemaining = ATTACK_COOLDOWN_MS;
+    this.attackCooldownRemaining = ATTACK_COOLDOWN_MS * gameState.attackCooldownMultiplier;
 
     const ring = this.add.circle(this.player.x, this.player.y, 8, 0xfff3d6, 0.5).setDepth(6);
     this.tweens.add({
@@ -228,9 +228,10 @@ export default class WildsScene extends Phaser.Scene {
       showFloatingText(this, enemy.sprite.x, enemy.sprite.y - 24, `+1 ${pack?.name ?? 'Pack'}!`, '#ffd166');
     }
     if (enemy.isBoss) {
-      gameState.addGold(enemy.bonusGold);
+      const goldAwarded = Math.round(enemy.bonusGold * gameState.bossGoldMultiplier);
+      gameState.addGold(goldAwarded);
       playLegendary();
-      showFloatingText(this, enemy.sprite.x, enemy.sprite.y - 48, `Boss defeated! +${enemy.bonusGold}g`, '#ffd166', 1800);
+      showFloatingText(this, enemy.sprite.x, enemy.sprite.y - 48, `Boss defeated! +${goldAwarded}g`, '#ffd166', 1800);
       this.bossSpawned = false;
       this.killCount = 0;
     } else {
@@ -294,7 +295,7 @@ export default class WildsScene extends Phaser.Scene {
 
   private tickRegen(time: number, delta: number) {
     if (time - this.lastDamageTime < HP_REGEN_DELAY_MS) return;
-    gameState.regenHp((HP_REGEN_PER_SEC * delta) / 1000);
+    gameState.regenHp((HP_REGEN_PER_SEC * gameState.regenRateMultiplier * delta) / 1000);
   }
 
   private tickSpawns(delta: number) {
