@@ -110,6 +110,8 @@ function defaultShopUpgrades(): ShopUpgrades {
     appraisersLoupe: false,
     bagTier1: false,
     bagTier2: false,
+    shopClerk: false,
+    autoRestocker: false,
   };
 }
 
@@ -454,6 +456,38 @@ class GameState {
     bus.emit('shelves-changed', this.shelves);
     bus.emit('board-progress-changed');
     return earned;
+  }
+
+  /** Real-time accumulator for the Shop Clerk's next automatic sale — ticks
+   * regardless of which scene you're actually in, same idea as energy drain. */
+  private shopAutomationMs = 0;
+  private static readonly SHOP_AUTOMATION_INTERVAL_MS = 30000;
+
+  tickShopAutomation(deltaMs: number) {
+    if (this.paused || !this.shopUpgrades.shopClerk) return;
+    this.shopAutomationMs += deltaMs;
+    while (this.shopAutomationMs >= GameState.SHOP_AUTOMATION_INTERVAL_MS) {
+      this.shopAutomationMs -= GameState.SHOP_AUTOMATION_INTERVAL_MS;
+      this.autoSellOneShelf();
+    }
+  }
+
+  private autoSellOneShelf() {
+    const stocked = this.shelves.filter((s) => s.card);
+    if (stocked.length === 0) return;
+    const shelf = stocked[Math.floor(Math.random() * stocked.length)];
+    const cardName = shelf.card!.name;
+    const earned = this.sellFromShelf(shelf.id);
+    bus.emit('auto-sale', { cardName, earned });
+    if (this.shopUpgrades.autoRestocker) this.autoRestockShelf(shelf.id);
+  }
+
+  /** Restocks with the lowest-value card on hand, so the clerk's assistant
+   * doesn't quietly sell off your best pulls while you're not looking. */
+  private autoRestockShelf(shelfId: string) {
+    if (this.inventory.length === 0) return;
+    const card = [...this.inventory].sort((a, b) => a.baseValue - b.baseValue)[0];
+    this.placeOnShelf(shelfId, card.id, card.baseValue);
   }
 
   purchaseShopUpgrade(key: keyof ShopUpgrades, cost: number): boolean {

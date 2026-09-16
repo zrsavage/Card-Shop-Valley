@@ -199,6 +199,7 @@ export default class TownScene extends Phaser.Scene {
       this.handleInteract();
       this.handleDoorTrigger();
       gameState.tickEnergy(delta);
+      gameState.tickShopAutomation(delta);
       this.updateNpcPositions();
     } else {
       this.promptText.setVisible(false);

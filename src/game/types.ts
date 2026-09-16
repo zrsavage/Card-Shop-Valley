@@ -32,6 +32,10 @@ export interface ShopUpgrades {
   appraisersLoupe: boolean;
   bagTier1: boolean;
   bagTier2: boolean;
+  /** Staff — automate parts of the shop loop so it keeps ticking over
+   * while you're off in the Wilds, fishing, or talking to townsfolk. */
+  shopClerk: boolean;
+  autoRestocker: boolean;
 }
 
 export interface TownUpgrades {

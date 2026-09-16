@@ -118,6 +118,19 @@ const SHOP_UPGRADE_DEFS: ShopUpgradeDef[] = [
   // the bag no longer limits how many cards you can hold. The upgrades and
   // gameState.bagCapacity still exist for whatever non-card items show up
   // later; they're just not worth gold to buy while nothing uses them yet.
+  {
+    key: 'shopClerk',
+    name: 'Hire a Shop Clerk',
+    cost: 1000,
+    description: 'Sells one stocked shelf on its own every so often — even while you\'re off in the Wilds or Town.',
+  },
+  {
+    key: 'autoRestocker',
+    name: "Clerk's Assistant",
+    cost: 600,
+    description: 'Whenever the clerk empties a shelf, restocks it from your bag automatically.',
+    requiresKey: 'shopClerk',
+  },
 ];
 
 interface TownUpgradeDef {
@@ -1459,6 +1472,7 @@ export function initUI() {
       </div>
       <button id="menu-btn" class="btn btn-small">&#9776; Menu</button>
     </div>
+    <div id="auto-sale-toast" class="auto-sale-toast" hidden></div>
     <div id="modal-layer"></div>
   `;
   modalLayer = root.querySelector('#modal-layer') as HTMLDivElement;
@@ -1530,6 +1544,18 @@ export function initUI() {
   bus.on('combat-upgrades-changed', () => {
     const el = document.getElementById('max-hp-value');
     if (el) el.textContent = String(gameState.maxHp);
+  });
+  let autoSaleToastTimer: ReturnType<typeof setTimeout> | null = null;
+  bus.on('auto-sale', ({ cardName, earned }: { cardName: string; earned: number }) => {
+    const toast = document.getElementById('auto-sale-toast');
+    if (!toast) return;
+    toast.textContent = `Clerk sold ${cardName} for ${earned}g!`;
+    toast.hidden = false;
+    playCoin();
+    if (autoSaleToastTimer) clearTimeout(autoSaleToastTimer);
+    autoSaleToastTimer = setTimeout(() => {
+      toast.hidden = true;
+    }, 2600);
   });
   bus.on('open-counter', openCounterModal);
   bus.on('open-shelf', (shelfId: string) => openShelfModal(shelfId));

@@ -224,6 +224,7 @@ export default class ShopScene extends Phaser.Scene {
       this.handleInteract();
       this.handleDoorTrigger();
       gameState.tickEnergy(delta);
+      gameState.tickShopAutomation(delta);
       this.tickCustomerSpawns(delta);
     } else {
       this.promptText.setVisible(false);

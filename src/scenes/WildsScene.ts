@@ -141,6 +141,7 @@ export default class WildsScene extends Phaser.Scene {
     this.tickSpawns(delta);
     this.tickRegen(time, delta);
     gameState.tickEnergy(delta, WILDS_EXTRA_ENERGY_DRAIN_PER_SEC);
+    gameState.tickShopAutomation(delta);
 
     const nearReturn = Phaser.Math.Distance.Between(this.player.x, this.player.y, WILDS_TO_TOWN_TRIGGER.x, WILDS_TO_TOWN_TRIGGER.y) < 70;
     this.promptText.setVisible(nearReturn);
