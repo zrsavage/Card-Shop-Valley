@@ -24,6 +24,7 @@ import { OUTFITS } from './outfits';
 import { rollFish, FISHING_ENERGY_COST, type FishDef } from './fishing';
 import { DECOR_ITEMS } from './decor';
 import { PERKS } from './perks';
+import { DAILY_BOSS_KILL_CAP } from './combat';
 
 export const bus = new Phaser.Events.EventEmitter();
 
@@ -38,6 +39,14 @@ export const VITALITY_TIER_HP_BONUS = 40;
 
 export const PLAYER_BASE_SPEED = 240;
 export const SPEED_TIER_BONUS = 30;
+
+// Melee attack shape: a directional cone in the facing direction rather
+// than a full-circle AoE. Range makes it longer, arc makes it wider — the
+// Attack Range upgrade tiers bump both at once.
+export const PLAYER_BASE_MELEE_RANGE = 85;
+export const MELEE_RANGE_TIER_BONUS = 20;
+export const PLAYER_BASE_ATTACK_ARC_DEGREES = 100;
+export const ATTACK_ARC_TIER_BONUS = 25;
 
 export const PLAYER_MAX_ENERGY = 100;
 // Passive drain: a full day's energy (idling in Town/Shop) lasts ~5 minutes.
@@ -134,6 +143,8 @@ function defaultCombatUpgrades(): CombatUpgrades {
     vitalityTier3: false,
     vitalityTier4: false,
     vitalityTier5: false,
+    attackRangeTier1: false,
+    attackRangeTier2: false,
   };
 }
 
@@ -196,6 +207,11 @@ class GameState {
   giftsGivenToday = 0;
   packsOpenedToday = 0;
   fishCaughtToday = 0;
+
+  /** Zone boss kills today, per zone — once a zone hits DAILY_BOSS_KILL_CAP
+   * it's "cleared out" until the day ends, so a single Wilds visit can't be
+   * farmed forever for boss gold. Reset every day (and on Prestige). */
+  bossKillsToday: Record<string, number> = {};
 
   /** Lifetime count of each fish species caught at the fountain — the Fish
    * Codex's "discovered" set, and survives prestige like the card
@@ -266,6 +282,18 @@ class GameState {
       this.combatUpgrades.vitalityTier5,
     ].filter(Boolean).length;
     return PLAYER_BASE_MAX_HP + tiers * VITALITY_TIER_HP_BONUS;
+  }
+
+  private get attackRangeTiers(): number {
+    return [this.combatUpgrades.attackRangeTier1, this.combatUpgrades.attackRangeTier2].filter(Boolean).length;
+  }
+
+  get meleeRange(): number {
+    return PLAYER_BASE_MELEE_RANGE + this.attackRangeTiers * MELEE_RANGE_TIER_BONUS;
+  }
+
+  get attackArcDegrees(): number {
+    return PLAYER_BASE_ATTACK_ARC_DEGREES + this.attackRangeTiers * ATTACK_ARC_TIER_BONUS;
   }
 
   get maxEnergy(): number {
@@ -606,6 +634,17 @@ class GameState {
     bus.emit('board-progress-changed');
   }
 
+  /** Call once per zone boss kill. Returns true the moment that zone hits
+   * its daily cap — the caller uses that to end the Wilds visit for the day. */
+  noteBossDefeated(zoneId: string): boolean {
+    this.bossKillsToday[zoneId] = (this.bossKillsToday[zoneId] ?? 0) + 1;
+    return this.bossKillsToday[zoneId] >= DAILY_BOSS_KILL_CAP;
+  }
+
+  isZoneClearedToday(zoneId: string): boolean {
+    return (this.bossKillsToday[zoneId] ?? 0) >= DAILY_BOSS_KILL_CAP;
+  }
+
   /** Called right after a pack is opened, before its cards are added. */
   notePackOpened() {
     this.packsOpenedToday += 1;
@@ -718,6 +757,7 @@ class GameState {
     this.giftsGivenToday = 0;
     this.packsOpenedToday = 0;
     this.fishCaughtToday = 0;
+    this.bossKillsToday = {};
     this.townBoard = rollTownBoard(false);
     this.merchantVisit = null;
     this.shinyCharmActive = false;
@@ -878,6 +918,7 @@ class GameState {
     this.giftsGivenToday = 0;
     this.packsOpenedToday = 0;
     this.fishCaughtToday = 0;
+    this.bossKillsToday = {};
     this.energy = this.maxEnergy;
     if (this.pendingPacks.length > 0) {
       this.ownedPacks.push(...this.pendingPacks);

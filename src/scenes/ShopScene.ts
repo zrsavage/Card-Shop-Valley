@@ -3,7 +3,7 @@ import { gameState, bus } from '../game/state';
 import { spawnCustomer } from '../game/Customer';
 import { COUNTER_POS, SHOP_ENTRANCE_POS, SHOP_DOOR_TRIGGER, SHOP_SHELF_POSITIONS } from '../game/layout';
 import type { ShelfPosition } from '../game/layout';
-import { humanoidTextureKey, attachCircleBody } from '../game/pixelArt';
+import { playerTextureKey, attachCircleBody } from '../game/pixelArt';
 import { woodTextureKey } from '../game/sceneryArt';
 import { DECOR_ITEMS, type DecorDef } from '../game/decor';
 import { playFootstep } from '../game/audio';
@@ -74,7 +74,7 @@ export default class ShopScene extends Phaser.Scene {
     });
 
     // Player
-    const playerTexture = humanoidTextureKey(this, gameState.equippedOutfitColor, 32);
+    const playerTexture = playerTextureKey(this, gameState.equippedOutfitColor, 32);
     this.player = this.add.sprite(SHOP_ENTRANCE_POS.x, SHOP_ENTRANCE_POS.y, playerTexture).setDepth(5);
     this.physics.add.existing(this.player);
     attachCircleBody(this.player, 16);
@@ -117,7 +117,7 @@ export default class ShopScene extends Phaser.Scene {
   }
 
   private onCosmeticsChanged() {
-    this.player.setTexture(humanoidTextureKey(this, gameState.equippedOutfitColor, 32));
+    this.player.setTexture(playerTextureKey(this, gameState.equippedOutfitColor, 32));
     this.refreshDecor();
   }
 
@@ -292,8 +292,10 @@ export default class ShopScene extends Phaser.Scene {
       this.promptText.setVisible(false);
     }
 
-    if (Phaser.Input.Keyboard.JustDown(this.interactKey) && target) {
-      if (target.type === 'counter') {
+    if (Phaser.Input.Keyboard.JustDown(this.interactKey)) {
+      if (!target) {
+        bus.emit('open-menu');
+      } else if (target.type === 'counter') {
         bus.emit('open-counter');
       } else {
         bus.emit('open-shelf', target.id);

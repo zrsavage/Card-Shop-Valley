@@ -48,13 +48,27 @@ function pick<T>(arr: T[]): T {
   return arr[Math.floor(Math.random() * arr.length)];
 }
 
-/** How many different shelves this customer will check before leaving. */
-function rollVisitCount(): number {
-  const roll = Math.random();
-  if (roll < 0.55) return 1;
-  if (roll < 0.85) return 2;
-  return 3;
+/** How many different shelves this customer will check before leaving —
+ * always at least 2 for anyone actually buying, so a customer with money
+ * left doesn't just grab the first cheap card and walk out. Actual
+ * purchases are further capped by their budget (see rollBudget below). */
+function rollMaxVisits(archetype: 'normal' | 'bulkBuyer' | 'bigSpender'): number {
+  if (archetype === 'bulkBuyer') return Phaser.Math.Between(4, 5);
+  if (archetype === 'bigSpender') return Phaser.Math.Between(2, 3);
+  return Phaser.Math.Between(2, 3);
 }
+
+/** A rough gold budget for this visit — high/low so they keep shopping
+ * until it's spent instead of stopping after one purchase. */
+function rollBudget(archetype: 'normal' | 'bulkBuyer' | 'bigSpender'): number {
+  if (archetype === 'bigSpender') return Phaser.Math.Between(250, 600);
+  if (archetype === 'bulkBuyer') return Phaser.Math.Between(150, 350);
+  return Phaser.Math.Between(50, 180);
+}
+
+// Below this, a customer with money left still calls it quits rather than
+// wandering shelves they can no longer afford anything from.
+const MIN_BROWSE_BUDGET = 5;
 
 function tweenTo(scene: Phaser.Scene, target: Phaser.GameObjects.Sprite, x: number, y: number, onDone: () => void) {
   const dist = Phaser.Math.Distance.Between(target.x, target.y, x, y);
@@ -110,11 +124,18 @@ export function spawnCustomer(scene: Phaser.Scene, stockedShelves: ShelfTarget[]
   }
 
   const browseOnly = archetype === 'normal' && Math.random() < BROWSE_ONLY_CHANCE;
-  const visitCount = archetype === 'bulkBuyer' ? Math.min(stockedShelves.length, 4) : rollVisitCount();
-  const visitPlan = Phaser.Utils.Array.Shuffle([...stockedShelves]).slice(0, browseOnly ? 1 : visitCount);
+  const maxVisits = browseOnly ? 1 : Math.min(stockedShelves.length, rollMaxVisits(archetype));
+  const visitPlan = Phaser.Utils.Array.Shuffle([...stockedShelves]).slice(0, maxVisits);
   let boughtAnything = false;
+  let budgetRemaining = browseOnly ? 0 : rollBudget(archetype);
 
   function visit(i: number) {
+    // Out of money worth spending — stop wandering shelves instead of
+    // finishing out a visit plan they can no longer afford.
+    if (!browseOnly && i > 0 && budgetRemaining < MIN_BROWSE_BUDGET) {
+      leaveShop(boughtAnything);
+      return;
+    }
     if (i >= visitPlan.length) {
       leaveShop(boughtAnything);
       return;
@@ -152,13 +173,20 @@ export function spawnCustomer(scene: Phaser.Scene, stockedShelves: ShelfTarget[]
       // when it actually comes to paying it.
       const effectiveRatio = archetype === 'bigSpender' ? ratio * 0.6 : ratio;
       const buyChance = buyChanceFor(effectiveRatio, gameState.shopUpgrades.appraisersLoupe, gameState.hasPerk('silverTongue'));
-      const willBuy = Math.random() < buyChance;
+      // Budget gates the purchase outright, on top of (not instead of) the
+      // usual price-fairness roll — a great deal they can't actually afford
+      // still doesn't sell.
+      const canAfford = price <= budgetRemaining;
+      const willBuy = canAfford && Math.random() < buyChance;
 
       if (willBuy) {
         const earned = gameState.sellFromShelf(target.id);
+        budgetRemaining -= price;
         boughtAnything = true;
         showFloatingText(scene, sprite.x, sprite.y - 42, `+${earned}g`, '#2b8a3e');
         playCoin();
+      } else if (!canAfford) {
+        showFloatingText(scene, sprite.x, sprite.y - 42, `Can't afford that`, '#c92a2a');
       }
       scene.time.delayedCall(NEXT_SHELF_PAUSE_MS, () => visit(i + 1));
     });

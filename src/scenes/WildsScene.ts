@@ -1,19 +1,30 @@
 import Phaser from 'phaser';
 import { gameState, bus, WILDS_EXTRA_ENERGY_DRAIN_PER_SEC, EXHAUSTED_SPEED_MULTIPLIER, EXHAUSTED_DAMAGE_TAKEN_MULTIPLIER } from '../game/state';
-import { showFloatingText } from '../game/fx';
-import { ZONE_DEFS, rollPackDrop, BOSS_KILL_THRESHOLD, type EnemyDef, type ZoneDef } from '../game/combat';
+import { showFloatingText, showBannerText } from '../game/fx';
+import { ZONE_DEFS, rollPackDrop, BOSS_KILL_THRESHOLD, type EnemyDef, type ZoneDef, type BossSpecialAttack } from '../game/combat';
 import { PACKS } from '../game/packs';
 import { WILDS_FROM_TOWN_POS, WILDS_TO_TOWN_TRIGGER } from '../game/layout';
-import { humanoidTextureKey, monsterTextureKey, attachCircleBody } from '../game/pixelArt';
+import { playerTextureKey, monsterTextureKey, attachCircleBody } from '../game/pixelArt';
 import { grassTextureKey, stoneGroundTextureKey } from '../game/sceneryArt';
 import { playHit, playPlayerHurt, playLegendary, playFootstep } from '../game/audio';
 
-const MELEE_RANGE = 85;
 const STEP_INTERVAL_MS = 300;
 const ATTACK_COOLDOWN_MS = 400;
 const CONTACT_DAMAGE_COOLDOWN_MS = 900;
 const HP_REGEN_DELAY_MS = 3000;
 const HP_REGEN_PER_SEC = 6;
+
+// Boss special attacks.
+const SPECIAL_COOLDOWN_MS = 6000;
+const SPECIAL_INITIAL_DELAY_MS = 2500;
+const RUSH_TELEGRAPH_MS = 500;
+const RUSH_DURATION_MS = 700;
+const RUSH_SPEED_MULTIPLIER = 3.2;
+const RUSH_DAMAGE_MULTIPLIER = 1.4;
+const AOE_TELEGRAPH_MS = 650;
+const AOE_RADIUS = 130;
+const AOE_DAMAGE_MULTIPLIER = 1.6;
+const ZONE_CLEARED_NOTICE_MS = 3200;
 
 interface EnemyInstance {
   def: EnemyDef;
@@ -26,6 +37,11 @@ interface EnemyInstance {
   isBoss: boolean;
   bonusGold: number;
   nameLabel: Phaser.GameObjects.Text | null;
+  specialAttack: BossSpecialAttack | null;
+  nextSpecialAt: number;
+  rushUntil: number;
+  rushDirX: number;
+  rushDirY: number;
 }
 
 export default class WildsScene extends Phaser.Scene {
@@ -33,6 +49,7 @@ export default class WildsScene extends Phaser.Scene {
   private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
   private wasd!: Record<'up' | 'down' | 'left' | 'right', Phaser.Input.Keyboard.Key>;
   private attackKey!: Phaser.Input.Keyboard.Key;
+  private menuKey!: Phaser.Input.Keyboard.Key;
   private promptText!: Phaser.GameObjects.Text;
   private enemies: EnemyInstance[] = [];
   private attackCooldownRemaining = 0;
@@ -43,6 +60,12 @@ export default class WildsScene extends Phaser.Scene {
   private killCount = 0;
   private bossSpawned = false;
   private stepTimer = 0;
+  /** Radians; drives the directional melee cone. Kept from the last frame
+   * with movement input, so standing still still swings the way you faced. */
+  private facingAngle = -Math.PI / 2;
+  /** True once this zone has hit its daily boss-kill cap — no more spawns
+   * until the day ends. */
+  private zoneCleared = false;
 
   constructor() {
     super('Wilds');
@@ -59,6 +82,8 @@ export default class WildsScene extends Phaser.Scene {
     this.killCount = 0;
     this.bossSpawned = false;
     this.stepTimer = 0;
+    this.facingAngle = -Math.PI / 2;
+    this.zoneCleared = gameState.isZoneClearedToday(this.zone.id);
 
     // Wild terrain — textured per zone so each one reads as a different
     // place, not just a recolored enemy roster on the same ground. Frostback
@@ -72,8 +97,9 @@ export default class WildsScene extends Phaser.Scene {
       this.add.circle(x, y, Phaser.Math.Between(10, 22), this.zone.decorationColor, 0.6).setDepth(0);
     }
 
+    const zoneLabel = this.zoneCleared ? `${this.zone.name} (cleared for today)` : this.zone.name;
     this.add
-      .text(400, 56, this.zone.name, { fontSize: '13px', color: '#fff8ec', backgroundColor: '#000000aa', padding: { x: 8, y: 3 } })
+      .text(400, 56, zoneLabel, { fontSize: '13px', color: '#fff8ec', backgroundColor: '#000000aa', padding: { x: 8, y: 3 } })
       .setOrigin(0.5, 0)
       .setDepth(10);
 
@@ -86,7 +112,7 @@ export default class WildsScene extends Phaser.Scene {
 
     gameState.healFully();
 
-    const playerTexture = humanoidTextureKey(this, gameState.equippedOutfitColor, 32);
+    const playerTexture = playerTextureKey(this, gameState.equippedOutfitColor, 32);
     this.player = this.add.sprite(WILDS_FROM_TOWN_POS.x, WILDS_FROM_TOWN_POS.y, playerTexture).setDepth(5);
     this.physics.add.existing(this.player);
     attachCircleBody(this.player, 16);
@@ -107,8 +133,11 @@ export default class WildsScene extends Phaser.Scene {
       right: this.input.keyboard!.addKey('D'),
     };
     this.attackKey = this.input.keyboard!.addKey('SPACE');
+    this.menuKey = this.input.keyboard!.addKey('E');
 
-    for (let i = 0; i < 3; i++) this.spawnEnemy();
+    if (!this.zoneCleared) {
+      for (let i = 0; i < 3; i++) this.spawnEnemy();
+    }
 
     bus.on('paused-changed', this.onPausedChanged, this);
     bus.on('cosmetics-changed', this.onCosmeticsChanged, this);
@@ -123,7 +152,7 @@ export default class WildsScene extends Phaser.Scene {
   }
 
   private onCosmeticsChanged() {
-    this.player.setTexture(humanoidTextureKey(this, gameState.equippedOutfitColor, 32));
+    this.player.setTexture(playerTextureKey(this, gameState.equippedOutfitColor, 32));
   }
 
   update(time: number, delta: number) {
@@ -137,6 +166,7 @@ export default class WildsScene extends Phaser.Scene {
     this.tickFootsteps(moving, delta);
     this.handleAttack();
     this.handleReturnTrigger();
+    if (Phaser.Input.Keyboard.JustDown(this.menuKey)) bus.emit('open-menu');
     this.updateEnemies(time, delta);
     this.tickSpawns(delta);
     this.tickRegen(time, delta);
@@ -160,7 +190,10 @@ export default class WildsScene extends Phaser.Scene {
     if (this.cursors.down?.isDown || this.wasd.down.isDown) vy += 1;
     const vec = new Phaser.Math.Vector2(vx, vy);
     const moving = vec.length() > 0;
-    if (moving) vec.normalize();
+    if (moving) {
+      vec.normalize();
+      this.facingAngle = Math.atan2(vec.y, vec.x);
+    }
     const speed = gameState.isExhausted ? gameState.moveSpeed * EXHAUSTED_SPEED_MULTIPLIER : gameState.moveSpeed;
     body.setVelocity(vec.x * speed, vec.y * speed);
     return moving;
@@ -190,19 +223,37 @@ export default class WildsScene extends Phaser.Scene {
     if (!Phaser.Input.Keyboard.JustDown(this.attackKey)) return;
     this.attackCooldownRemaining = ATTACK_COOLDOWN_MS * gameState.attackCooldownMultiplier;
 
-    const ring = this.add.circle(this.player.x, this.player.y, 8, 0xfff3d6, 0.5).setDepth(6);
+    // A directional cone in the last-faced direction, not a full-circle AoE —
+    // the Attack Range upgrade makes it both longer (radius) and wider (arc).
+    const range = gameState.meleeRange;
+    const arcDeg = gameState.attackArcDegrees;
+    const facingDeg = Phaser.Math.RadToDeg(this.facingAngle);
+    const wedge = this.add.arc(this.player.x, this.player.y, 8, facingDeg - arcDeg / 2, facingDeg + arcDeg / 2, false, 0xfff3d6, 0.5).setDepth(6);
     this.tweens.add({
-      targets: ring,
-      radius: MELEE_RANGE,
+      targets: wedge,
+      radius: range,
       alpha: 0,
       duration: 200,
-      onComplete: () => ring.destroy(),
+      onComplete: () => wedge.destroy(),
     });
+
+    // Under-geared for this zone: the swing still connects (cone/range are
+    // unaffected) but lands for nothing, so it's obvious gear is the actual
+    // blocker rather than the attack silently whiffing.
+    const geared = gameState.attackDamage >= this.zone.recommendedAttack;
+    const halfArcRad = Phaser.Math.DegToRad(arcDeg) / 2;
 
     for (const enemy of [...this.enemies]) {
       const d = Phaser.Math.Distance.Between(enemy.sprite.x, enemy.sprite.y, this.player.x, this.player.y);
-      if (d < MELEE_RANGE) {
+      if (d >= range) continue;
+      const angleToEnemy = Phaser.Math.Angle.Between(this.player.x, this.player.y, enemy.sprite.x, enemy.sprite.y);
+      const diff = Phaser.Math.Angle.Wrap(angleToEnemy - this.facingAngle);
+      if (Math.abs(diff) > halfArcRad) continue;
+
+      if (geared) {
         this.damageEnemy(enemy, gameState.attackDamage);
+      } else {
+        showFloatingText(this, enemy.sprite.x, enemy.sprite.y - enemy.def.radius - 6, `No Damage!`, '#a1887f');
       }
     }
   }
@@ -235,6 +286,15 @@ export default class WildsScene extends Phaser.Scene {
       showFloatingText(this, enemy.sprite.x, enemy.sprite.y - 48, `Boss defeated! +${goldAwarded}g`, '#ffd166', 1800);
       this.bossSpawned = false;
       this.killCount = 0;
+
+      const nowCleared = gameState.noteBossDefeated(this.zone.id);
+      if (nowCleared) {
+        this.zoneCleared = true;
+        showBannerText(this, `Looks like you've cleared out the area for today, try coming back tomorrow!`, ZONE_CLEARED_NOTICE_MS);
+        this.time.delayedCall(ZONE_CLEARED_NOTICE_MS, () => {
+          this.scene.start('Town', { from: 'wilds' });
+        });
+      }
     } else {
       this.killCount += 1;
     }
@@ -249,8 +309,22 @@ export default class WildsScene extends Phaser.Scene {
     const dt = delta / 1000;
     for (const enemy of this.enemies) {
       const distToPlayer = Phaser.Math.Distance.Between(enemy.sprite.x, enemy.sprite.y, this.player.x, this.player.y);
+      const isRushing = enemy.rushUntil > time;
+      // While nextSpecialAt is parked at Infinity, the boss is mid-telegraph
+      // (or mid-slam-resolve) — frozen in place except for an active rush dash.
+      const isBusy = enemy.nextSpecialAt === Infinity;
 
-      if (distToPlayer < enemy.def.aggroRange) {
+      if (enemy.isBoss && enemy.specialAttack && !isBusy && !isRushing && time >= enemy.nextSpecialAt) {
+        enemy.nextSpecialAt = Infinity;
+        this.triggerBossSpecial(enemy);
+      }
+
+      if (isRushing) {
+        enemy.sprite.x += enemy.rushDirX * enemy.def.speed * RUSH_SPEED_MULTIPLIER * dt;
+        enemy.sprite.y += enemy.rushDirY * enemy.def.speed * RUSH_SPEED_MULTIPLIER * dt;
+      } else if (isBusy) {
+        // Planting for a telegraphed attack — hold position.
+      } else if (distToPlayer < enemy.def.aggroRange) {
         const angle = Phaser.Math.Angle.Between(enemy.sprite.x, enemy.sprite.y, this.player.x, this.player.y);
         enemy.sprite.x += Math.cos(angle) * enemy.def.speed * dt;
         enemy.sprite.y += Math.sin(angle) * enemy.def.speed * dt;
@@ -276,7 +350,8 @@ export default class WildsScene extends Phaser.Scene {
       if (distToPlayer < contactDist && time - enemy.lastContactTime > CONTACT_DAMAGE_COOLDOWN_MS) {
         enemy.lastContactTime = time;
         this.lastDamageTime = time;
-        const damage = gameState.isExhausted ? Math.round(enemy.def.damage * EXHAUSTED_DAMAGE_TAKEN_MULTIPLIER) : enemy.def.damage;
+        const baseDamage = isRushing ? Math.round(enemy.def.damage * RUSH_DAMAGE_MULTIPLIER) : enemy.def.damage;
+        const damage = gameState.isExhausted ? Math.round(baseDamage * EXHAUSTED_DAMAGE_TAKEN_MULTIPLIER) : baseDamage;
         const dead = gameState.takeDamage(damage);
         playPlayerHurt();
         showFloatingText(this, this.player.x, this.player.y - 24, `-${damage}`, '#ff6b6b');
@@ -285,6 +360,49 @@ export default class WildsScene extends Phaser.Scene {
           return;
         }
       }
+    }
+  }
+
+  /** Kicks off a boss's signature move: a telegraph window (so it's avoidable,
+   * not a free hit) followed by the actual rush dash or AoE slam resolution. */
+  private triggerBossSpecial(enemy: EnemyInstance) {
+    if (enemy.specialAttack === 'rush') {
+      showFloatingText(this, enemy.sprite.x, enemy.sprite.y - enemy.def.radius - 30, 'Charging!', '#ff6b6b', RUSH_TELEGRAPH_MS);
+      enemy.sprite.setTint(0xff4444);
+      this.time.delayedCall(RUSH_TELEGRAPH_MS, () => {
+        if (!this.enemies.includes(enemy)) return;
+        enemy.sprite.clearTint();
+        const angle = Phaser.Math.Angle.Between(enemy.sprite.x, enemy.sprite.y, this.player.x, this.player.y);
+        enemy.rushDirX = Math.cos(angle);
+        enemy.rushDirY = Math.sin(angle);
+        enemy.rushUntil = this.time.now + RUSH_DURATION_MS;
+        this.time.delayedCall(RUSH_DURATION_MS, () => {
+          if (this.enemies.includes(enemy)) enemy.rushUntil = 0;
+          enemy.nextSpecialAt = this.time.now + SPECIAL_COOLDOWN_MS;
+        });
+      });
+    } else if (enemy.specialAttack === 'aoeSlam') {
+      const indicator = this.add
+        .circle(enemy.sprite.x, enemy.sprite.y, AOE_RADIUS, 0xff6b6b, 0.12)
+        .setStrokeStyle(2, 0xff6b6b, 0.8)
+        .setDepth(3);
+      showFloatingText(this, enemy.sprite.x, enemy.sprite.y - enemy.def.radius - 30, 'Slam incoming!', '#ff6b6b', AOE_TELEGRAPH_MS);
+      this.tweens.add({ targets: indicator, alpha: 0.35, duration: AOE_TELEGRAPH_MS });
+      this.time.delayedCall(AOE_TELEGRAPH_MS, () => {
+        indicator.destroy();
+        if (!this.enemies.includes(enemy)) return;
+        const d = Phaser.Math.Distance.Between(enemy.sprite.x, enemy.sprite.y, this.player.x, this.player.y);
+        if (d < AOE_RADIUS) {
+          const baseDamage = Math.round(enemy.def.damage * AOE_DAMAGE_MULTIPLIER);
+          const damage = gameState.isExhausted ? Math.round(baseDamage * EXHAUSTED_DAMAGE_TAKEN_MULTIPLIER) : baseDamage;
+          const dead = gameState.takeDamage(damage);
+          playPlayerHurt();
+          showFloatingText(this, this.player.x, this.player.y - 24, `-${damage}`, '#ff6b6b');
+          this.lastDamageTime = this.time.now;
+          if (dead) this.handlePlayerDown();
+        }
+        enemy.nextSpecialAt = this.time.now + SPECIAL_COOLDOWN_MS;
+      });
     }
   }
 
@@ -300,6 +418,7 @@ export default class WildsScene extends Phaser.Scene {
   }
 
   private tickSpawns(delta: number) {
+    if (this.zoneCleared) return;
     if (!this.bossSpawned && this.killCount >= BOSS_KILL_THRESHOLD) {
       this.spawnBoss();
     }
@@ -345,6 +464,11 @@ export default class WildsScene extends Phaser.Scene {
       isBoss: false,
       bonusGold: 0,
       nameLabel: null,
+      specialAttack: null,
+      nextSpecialAt: 0,
+      rushUntil: 0,
+      rushDirX: 0,
+      rushDirY: 0,
     });
   }
 
@@ -355,7 +479,7 @@ export default class WildsScene extends Phaser.Scene {
     const def = this.zone.boss;
     const { x, y } = this.findSpawnSpot();
 
-    showFloatingText(this, 400, 300, `${def.name} appears!`, '#ff6b6b', 1800);
+    showBannerText(this, `${def.name} appears!`, 1800);
 
     const texture = monsterTextureKey(this, def.color, def.radius * 2);
     const sprite = this.add.sprite(x, y, texture).setDepth(4);
@@ -378,6 +502,11 @@ export default class WildsScene extends Phaser.Scene {
       isBoss: true,
       bonusGold: def.bonusGold,
       nameLabel,
+      specialAttack: def.specialAttack,
+      nextSpecialAt: this.time.now + SPECIAL_INITIAL_DELAY_MS,
+      rushUntil: 0,
+      rushDirX: 0,
+      rushDirY: 0,
     });
   }
 }

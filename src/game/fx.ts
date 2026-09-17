@@ -19,6 +19,32 @@ export function showFloatingText(scene: Phaser.Scene, x: number, y: number, text
   });
 }
 
+/** A wide, boxed banner for a full-sentence announcement (zone cleared,
+ * boss incoming) — word-wrapped and backed, unlike the small floating pops
+ * used for damage/gold numbers, so a long message actually stays legible. */
+export function showBannerText(scene: Phaser.Scene, text: string, durationMs = 2600) {
+  const t = scene.add
+    .text(400, 130, text, {
+      fontSize: '16px',
+      color: '#fff8ec',
+      fontStyle: 'bold',
+      align: 'center',
+      backgroundColor: '#2b1d0edd',
+      padding: { x: 14, y: 10 },
+      wordWrap: { width: 560 },
+    })
+    .setOrigin(0.5)
+    .setDepth(25);
+  const holdMs = Math.max(0, durationMs - 500);
+  scene.tweens.add({
+    targets: t,
+    alpha: 0,
+    duration: durationMs - holdMs,
+    delay: holdMs,
+    onComplete: () => t.destroy(),
+  });
+}
+
 /** A speech-bubble-style variant for NPC/customer comments — longer-lived
  * and with a small background so a full sentence stays legible. */
 export function showSpeechText(scene: Phaser.Scene, x: number, y: number, text: string, color: string) {

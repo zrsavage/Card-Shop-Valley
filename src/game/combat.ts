@@ -109,14 +109,25 @@ const FROSTBACK_ENEMIES: EnemyDef[] = [
 /** Backward-compatible alias — the Bramble Wilds' own enemy roster. */
 export const ENEMY_DEFS: EnemyDef[] = BRAMBLE_ENEMIES;
 
+export type BossSpecialAttack = 'rush' | 'aoeSlam';
+
 export interface ZoneBossDef extends EnemyDef {
   /** Flat gold awarded on top of its (guaranteed) pack drop. */
   bonusGold: number;
+  /** A signature move beyond "bigger and tankier" — a telegraphed charge
+   * that punishes standing still, or a telegraphed slam that punishes
+   * staying in melee range. */
+  specialAttack: BossSpecialAttack;
 }
 
 /** How many regular kills in a single Wilds visit before the zone's boss
  * shows up — a build-up-and-payoff beat instead of just an endless grind. */
 export const BOSS_KILL_THRESHOLD = 6;
+
+/** Once a zone's boss has been killed this many times today, the zone is
+ * "cleared out" — no more enemies spawn there until the next day. Caps how
+ * much gold a single zone can be farmed for in one day. */
+export const DAILY_BOSS_KILL_CAP = 2;
 
 const ZONE_BOSSES: Record<string, ZoneBossDef> = {
   bramble: {
@@ -130,7 +141,8 @@ const ZONE_BOSSES: Record<string, ZoneBossDef> = {
     radius: 30,
     packDropChance: 1,
     packWeights: { starter: 0, deluxe: 60, mythic: 40 },
-    bonusGold: 150,
+    bonusGold: 100,
+    specialAttack: 'rush',
   },
   hollow: {
     id: 'hollow-boss',
@@ -143,7 +155,8 @@ const ZONE_BOSSES: Record<string, ZoneBossDef> = {
     radius: 34,
     packDropChance: 1,
     packWeights: { starter: 0, deluxe: 30, mythic: 70 },
-    bonusGold: 300,
+    bonusGold: 200,
+    specialAttack: 'aoeSlam',
   },
   frostback: {
     id: 'frostback-boss',
@@ -156,7 +169,8 @@ const ZONE_BOSSES: Record<string, ZoneBossDef> = {
     radius: 40,
     packDropChance: 1,
     packWeights: { starter: 0, deluxe: 0, mythic: 100 },
-    bonusGold: 600,
+    bonusGold: 400,
+    specialAttack: 'aoeSlam',
   },
 };
 

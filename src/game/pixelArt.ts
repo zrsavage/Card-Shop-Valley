@@ -38,6 +38,29 @@ const HUMANOID: Grid = [
   '.OFFF..FFFO.',
 ];
 
+// 14x17 chibi with a wide-brimmed hat — the player specifically, so a
+// glance at the sprite (not just its color) tells them apart from every
+// plain-haired NPC and customer using the shared HUMANOID grid above.
+const PLAYER: Grid = [
+  '..OOOOOOOOOO..',
+  '.OBBBBBBBBBBO.',
+  'OBBBBBBBBBBBBO',
+  '.OHHSSSSSSHHO.',
+  '.OHSSESSESSHO.',
+  '.OHSSSSSSSSHO.',
+  '..OSSSSSSSSO..',
+  '....OOSSOO....',
+  '..OOBBBBBBOO..',
+  '.ObBBBBBBBBbO.',
+  '.ObBBBBBBBBbO.',
+  '.ObBBBBBBBBbO.',
+  '.ObBBBBBBBBbO.',
+  '.OPPPPPPPPPPO.',
+  '..OPPP..PPPO..',
+  '..OPPP..PPPO..',
+  '..OFFF..FFFO..',
+];
+
 // 12x12 round horned beast — used for Wilds enemies, with a lighter belly
 // patch and a hint of bared teeth so it reads as a creature, not a disc.
 const MONSTER: Grid = [
@@ -107,6 +130,14 @@ export function humanoidTextureKey(scene: Phaser.Scene, bodyColor: number, targe
   const pixelSize = Math.max(2, Math.round(targetDiameter / HUMANOID[0].length));
   const key = `px-humanoid-${bodyColor.toString(16)}-${pixelSize}`;
   return buildTexture(scene, key, HUMANOID, bodyColor, pixelSize);
+}
+
+/** The player's own sprite — hat and shirt both pick up the equipped
+ * outfit color, so buying a new outfit recolors more than just the torso. */
+export function playerTextureKey(scene: Phaser.Scene, bodyColor: number, targetDiameter: number): string {
+  const pixelSize = Math.max(2, Math.round(targetDiameter / PLAYER[0].length));
+  const key = `px-player-${bodyColor.toString(16)}-${pixelSize}`;
+  return buildTexture(scene, key, PLAYER, bodyColor, pixelSize);
 }
 
 export function monsterTextureKey(scene: Phaser.Scene, bodyColor: number, targetDiameter: number): string {

@@ -54,6 +54,10 @@ export interface CombatUpgrades {
   vitalityTier3: boolean;
   vitalityTier4: boolean;
   vitalityTier5: boolean;
+  /** Longer AND wider melee reach — a directional cone in front of the
+   * player rather than a flat stat like the tiers above. */
+  attackRangeTier1: boolean;
+  attackRangeTier2: boolean;
 }
 
 export interface MovementUpgrades {

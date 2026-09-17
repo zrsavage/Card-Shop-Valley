@@ -1,10 +1,10 @@
-import { gameState, bus, WEAPON_TIER_DAMAGE_BONUS, VITALITY_TIER_HP_BONUS, SPEED_TIER_BONUS, SEASONS, ENERGY_TONIC_COST, ENERGY_TONIC_RESTORE, PLAYER_BASE_ATTACK_DAMAGE, PLAYER_BASE_MAX_HP, type DaySummary } from '../game/state';
+import { gameState, bus, WEAPON_TIER_DAMAGE_BONUS, VITALITY_TIER_HP_BONUS, SPEED_TIER_BONUS, MELEE_RANGE_TIER_BONUS, ATTACK_ARC_TIER_BONUS, SEASONS, ENERGY_TONIC_COST, ENERGY_TONIC_RESTORE, PLAYER_BASE_ATTACK_DAMAGE, PLAYER_BASE_MAX_HP, type DaySummary } from '../game/state';
 import { PACKS, openPack, type PackDefinition } from '../game/packs';
 import { RARITIES, RARITY_LABELS, RARITY_BASE_VALUE, SEASON_PRICE_MULTIPLIER } from '../game/cards';
 import { NPCS, friendshipTier, FRIENDSHIP_TIER_LABELS } from '../game/npcs';
 import { cardArtHtml } from '../game/cardArt';
 import { SEASON_SET_NAME, SEASON_CARD_POOL, STAGE_VALUE_MULTIPLIER, type SpeciesCard } from '../game/species';
-import { ZONE_DEFS } from '../game/combat';
+import { ZONE_DEFS, type ZoneDef } from '../game/combat';
 import { LEGACY_MILESTONES, LEGACY_CAPSTONE, type LegacyMilestone } from '../game/legacy';
 import { priceReactionFor } from '../game/pricing';
 import { playCardPop, playPackOpen, playLegendary, playChime, playCoin, playError } from '../game/audio';
@@ -83,8 +83,14 @@ function compactCardRowHtml(card: Card, idx: number, trailingHtml: string, highl
   `;
 }
 
-function renderModal(inner: string) {
-  modalLayer.innerHTML = `<div class="modal-backdrop"><div class="modal">${inner}</div></div>`;
+// Every modal gets the same top-corner X regardless of which tab/screen is
+// open — "close everything" shouldn't depend on hunting down that screen's
+// own Close/Cancel button. Most modals can just fully close; the pack
+// reveal passes its own onCloseX so bailing mid-reveal still banks the cards
+// instead of silently losing a just-opened pack's pulls.
+function renderModal(inner: string, onCloseX: () => void = closeModal) {
+  modalLayer.innerHTML = `<div class="modal-backdrop"><div class="modal"><button class="modal-x-btn" aria-label="Close">&times;</button>${inner}</div></div>`;
+  modalLayer.querySelector('.modal-x-btn')!.addEventListener('click', onCloseX);
   gameState.setPaused(true);
 }
 
@@ -211,6 +217,19 @@ const COMBAT_UPGRADE_DEFS: CombatUpgradeDef[] = [
     cost: 3500,
     description: `+${VITALITY_TIER_HP_BONUS} more max HP — Frostback-ready.`,
     requiresKey: 'vitalityTier4',
+  },
+  {
+    key: 'attackRangeTier1',
+    name: 'Reach I',
+    cost: 300,
+    description: `Longer, wider attack swing: +${MELEE_RANGE_TIER_BONUS} range and +${ATTACK_ARC_TIER_BONUS}° arc.`,
+  },
+  {
+    key: 'attackRangeTier2',
+    name: 'Reach II',
+    cost: 1200,
+    description: `Even longer, wider swing: +${MELEE_RANGE_TIER_BONUS} more range and +${ATTACK_ARC_TIER_BONUS}° more arc.`,
+    requiresKey: 'attackRangeTier1',
   },
 ];
 
@@ -489,20 +508,25 @@ function openPackRevealModal(pack: PackDefinition, cards: Card[]) {
       ${order.map(() => `<div class="reveal-pip"></div>`).join('')}
     </div>
     <div class="reveal-grid reveal-grid-small" id="reveal-grid" hidden></div>
-    <div class="modal-actions" id="reveal-actions">
-      <button class="btn btn-secondary skip-reveal-btn">Skip &raquo;</button>
-    </div>
-  `);
+    <div class="modal-actions" id="reveal-actions"></div>
+  `,
+    () => {
+      // Bailing out via the corner X mid-reveal still banks whatever this
+      // pack rolled — only a real "Collect" click is supposed to gate that
+      // in the normal flow, but losing pulled cards to an X click would be
+      // a nasty surprise.
+      gameState.addCardsToInventory(cards);
+      closeModal();
+    },
+  );
 
   const stage = modalLayer.querySelector('#reveal-stage') as HTMLDivElement;
   const progress = modalLayer.querySelector('#reveal-progress') as HTMLDivElement;
   const pips = progress.querySelectorAll<HTMLDivElement>('.reveal-pip');
   const grid = modalLayer.querySelector('#reveal-grid') as HTMLDivElement;
-  const skipBtn = modalLayer.querySelector('.skip-reveal-btn') as HTMLButtonElement;
   const actionsBox = modalLayer.querySelector('#reveal-actions') as HTMLDivElement;
 
   let idx = 0;
-  let timer: ReturnType<typeof setTimeout> | null = null;
 
   function spotlight(card: Card): boolean {
     const bigMoment = card.rarity === 'legendary' || card.shiny;
@@ -534,7 +558,6 @@ function openPackRevealModal(pack: PackDefinition, cards: Card[]) {
   }
 
   function finish() {
-    timer = null;
     stage.hidden = true;
     progress.hidden = true;
     grid.hidden = false;
@@ -565,20 +588,30 @@ function openPackRevealModal(pack: PackDefinition, cards: Card[]) {
     }
   }
 
+  // User-paced instead of auto-advancing on a timer — "Open Next" reveals
+  // one card per click, "Close" jumps straight to the collected-cards grid,
+  // so a big haul doesn't force you to sit through every card's delay.
+  function renderRevealActions() {
+    const isLast = idx >= order.length;
+    actionsBox.innerHTML = isLast
+      ? `<button class="btn open-next-btn">Collect Cards</button>`
+      : `<button class="btn open-next-btn">Open Next</button><button class="btn btn-secondary close-reveal-btn">Close</button>`;
+    actionsBox.querySelector('.open-next-btn')!.addEventListener('click', () => {
+      if (isLast) finish();
+      else revealNext();
+    });
+    actionsBox.querySelector('.close-reveal-btn')?.addEventListener('click', finish);
+  }
+
   function revealNext() {
     if (idx >= order.length) {
       finish();
       return;
     }
-    const bigMoment = spotlight(order[idx]);
+    spotlight(order[idx]);
     idx += 1;
-    timer = setTimeout(revealNext, bigMoment ? 1500 : 620);
+    renderRevealActions();
   }
-
-  skipBtn.addEventListener('click', () => {
-    if (timer) clearTimeout(timer);
-    finish();
-  });
 
   playPackOpen();
   revealNext();
@@ -827,12 +860,45 @@ function openZoneMapModal() {
   });
   modalLayer.querySelectorAll<HTMLButtonElement>('.enter-zone-btn').forEach((btn) => {
     btn.addEventListener('click', () => {
-      gameState.travelToZone(btn.dataset.zone!);
-      closeModal();
-      bus.emit('enter-wilds');
+      const zone = ZONE_DEFS.find((z) => z.id === btn.dataset.zone)!;
+      const geared = gameState.attackDamage >= zone.recommendedAttack && gameState.maxHp >= zone.recommendedHp;
+      if (geared) {
+        enterZone(zone.id);
+      } else {
+        confirmUnderGearedEntry(zone);
+      }
     });
   });
   modalLayer.querySelector('.close-btn')!.addEventListener('click', closeModal);
+}
+
+function enterZone(zoneId: string) {
+  gameState.travelToZone(zoneId);
+  closeModal();
+  bus.emit('enter-wilds');
+}
+
+/** Shown instead of walking straight in when a zone's recommended gear
+ * outstrips the player's — attacks there deal no damage until upgraded, so
+ * this is the "you'll notice, don't say we didn't warn you" checkpoint. */
+function confirmUnderGearedEntry(zone: ZoneDef) {
+  renderModal(
+    `
+    <h2>Under-geared</h2>
+    <p class="modal-sub">
+      You're under-geared for ${zone.name} (recommended ${zone.recommendedAttack} attack / ${zone.recommendedHp} HP,
+      you have ${gameState.attackDamage} / ${gameState.maxHp}). Your attacks will deal <strong>no damage</strong> until
+      you upgrade enough. Enter anyway?
+    </p>
+    <div class="modal-actions">
+      <button class="btn enter-anyway-btn">Enter Anyway</button>
+      <button class="btn btn-secondary close-btn">Cancel</button>
+    </div>
+  `,
+    openZoneMapModal,
+  );
+  modalLayer.querySelector('.enter-anyway-btn')!.addEventListener('click', () => enterZone(zone.id));
+  modalLayer.querySelector('.close-btn')!.addEventListener('click', openZoneMapModal);
 }
 
 // --- Traveling merchant ---
@@ -1479,6 +1545,20 @@ export function initUI() {
   modalLayer = root.querySelector('#modal-layer') as HTMLDivElement;
 
   document.getElementById('menu-btn')!.addEventListener('click', () => openMenuModal());
+
+  // Escape always does the obvious thing: close whatever's open, or if
+  // nothing is, open the Menu — a keyboard-only path to the same place the
+  // corner X and the HUD button reach. E does the same when a scene's own
+  // E-interact found nothing nearby to interact with (see bus 'open-menu').
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') return;
+    e.preventDefault();
+    if (modalLayer.innerHTML) closeModal();
+    else openMenuModal();
+  });
+  bus.on('open-menu', () => {
+    if (!modalLayer.innerHTML) openMenuModal();
+  });
 
   renderSeasonBadge();
 

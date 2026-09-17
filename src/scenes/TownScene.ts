@@ -12,7 +12,7 @@ import {
   MERCHANT_CART_POS,
 } from '../game/layout';
 import type { Season } from '../game/types';
-import { humanoidTextureKey, attachCircleBody } from '../game/pixelArt';
+import { humanoidTextureKey, playerTextureKey, attachCircleBody } from '../game/pixelArt';
 import { grassTextureKey, woodTextureKey, drawTownHall, drawFountain, type FountainVisual } from '../game/sceneryArt';
 import { playFootstep } from '../game/audio';
 
@@ -111,7 +111,7 @@ export default class TownScene extends Phaser.Scene {
 
     // Player — arrives at the door leading back from wherever they came from.
     const spawnPos = data?.from === 'wilds' ? TOWN_FROM_WILDS_POS : TOWN_SHOP_DOOR_POS;
-    const playerTexture = humanoidTextureKey(this, gameState.equippedOutfitColor, 32);
+    const playerTexture = playerTextureKey(this, gameState.equippedOutfitColor, 32);
     this.player = this.add.sprite(spawnPos.x, spawnPos.y, playerTexture).setDepth(5);
     this.physics.add.existing(this.player);
     attachCircleBody(this.player, 16);
@@ -154,7 +154,7 @@ export default class TownScene extends Phaser.Scene {
   }
 
   private onCosmeticsChanged() {
-    this.player.setTexture(humanoidTextureKey(this, gameState.equippedOutfitColor, 32));
+    this.player.setTexture(playerTextureKey(this, gameState.equippedOutfitColor, 32));
   }
 
   private updateMerchantVisibility() {
@@ -280,8 +280,10 @@ export default class TownScene extends Phaser.Scene {
       this.promptText.setVisible(false);
     }
 
-    if (Phaser.Input.Keyboard.JustDown(this.interactKey) && target) {
-      if (target.type === 'townhall') {
+    if (Phaser.Input.Keyboard.JustDown(this.interactKey)) {
+      if (!target) {
+        bus.emit('open-menu');
+      } else if (target.type === 'townhall') {
         bus.emit('open-townhall');
       } else if (target.type === 'wildsgate') {
         bus.emit('open-zonemap');
