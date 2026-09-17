@@ -809,13 +809,20 @@ class GameState {
     return true;
   }
 
+  /** Energy a single cast actually costs right now — the UI reads this too,
+   * so the "too tired to fish" gate always matches what castFishingLine()
+   * itself will charge (including the Patient Angler discount). */
+  get fishingCastCost(): number {
+    return this.hasPerk('patientAngler') ? Math.round(FISHING_ENERGY_COST * 0.8) : FISHING_ENERGY_COST;
+  }
+
   /** Casts a line at the fountain — requires it be repaired, and a full
    * cast's worth of energy up front (never partially drains you below what
    * it costs). A quiet, no-risk way to spend energy for a small, reliable
    * bit of gold instead of the Wilds or nothing at all. */
   castFishingLine(): { fish: FishDef; goldEarned: number } | null {
     if (!this.townUpgrades.fountainRepaired) return null;
-    const cost = this.hasPerk('patientAngler') ? Math.round(FISHING_ENERGY_COST * 0.8) : FISHING_ENERGY_COST;
+    const cost = this.fishingCastCost;
     if (this.energy < cost) return null;
     this.energy -= cost;
     bus.emit('energy-changed', this.energy);
@@ -842,8 +849,13 @@ class GameState {
     const enduringSpiritTiers = this.prestigePerks.filter((p) => p === 'enduringSpirit').length;
     const perkTravelerBonus = this.hasPerk('efficientTraveler') ? 0.1 : 0;
     const drainMultiplier = Math.max(0.1, 1 - enduringSpiritTiers * 0.15 - perkTravelerBonus);
-    const wildsExtraMultiplier = this.hasPerk('lightFeet') ? 0.9 : 1;
-    const drain = (ENERGY_DRAIN_PER_SEC + extraDrainPerSec * wildsExtraMultiplier) * drainMultiplier * (deltaMs / 1000);
+    // Light Feet cuts the *total* Wilds drain rate by 10%, not just the
+    // extra exertion on top of the always-on passive drain — otherwise the
+    // effective reduction while actually in the Wilds falls well short of
+    // the 10% the perk promises.
+    const inWilds = extraDrainPerSec > 0;
+    const wildsMultiplier = inWilds && this.hasPerk('lightFeet') ? 0.9 : 1;
+    const drain = (ENERGY_DRAIN_PER_SEC + extraDrainPerSec) * drainMultiplier * wildsMultiplier * (deltaMs / 1000);
     if (drain <= 0) return;
     this.energy = Math.max(0, this.energy - drain);
     bus.emit('energy-changed', this.energy);

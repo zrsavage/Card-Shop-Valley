@@ -1,4 +1,5 @@
 import type { Rarity } from './types';
+import { pickWeighted } from './packs';
 
 // Fishing at the town fountain — a quiet, low-stakes side activity that
 // trades energy for a modest, reliable bit of gold, distinct from both the
@@ -43,18 +44,7 @@ function luckyWeights(): Record<Rarity, number> {
 }
 
 export function rollFish(lucky = false): FishDef {
-  const weights = lucky ? luckyWeights() : FISH_RARITY_WEIGHTS;
-  const entries = Object.entries(weights) as [Rarity, number][];
-  const total = entries.reduce((sum, [, w]) => sum + w, 0);
-  let roll = Math.random() * total;
-  let rarity: Rarity = 'common';
-  for (const [r, w] of entries) {
-    if (roll < w) {
-      rarity = r;
-      break;
-    }
-    roll -= w;
-  }
+  const rarity = pickWeighted(lucky ? luckyWeights() : FISH_RARITY_WEIGHTS);
   const pool = FISH_SPECIES.filter((f) => f.rarity === rarity);
   return pool[Math.floor(Math.random() * pool.length)];
 }

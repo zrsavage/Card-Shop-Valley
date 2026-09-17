@@ -1,4 +1,4 @@
-import { gameState, bus, WEAPON_TIER_DAMAGE_BONUS, VITALITY_TIER_HP_BONUS, SPEED_TIER_BONUS, SEASONS, ENERGY_TONIC_COST, ENERGY_TONIC_RESTORE, type DaySummary } from '../game/state';
+import { gameState, bus, WEAPON_TIER_DAMAGE_BONUS, VITALITY_TIER_HP_BONUS, SPEED_TIER_BONUS, SEASONS, ENERGY_TONIC_COST, ENERGY_TONIC_RESTORE, PLAYER_BASE_ATTACK_DAMAGE, PLAYER_BASE_MAX_HP, type DaySummary } from '../game/state';
 import { PACKS, openPack, type PackDefinition } from '../game/packs';
 import { RARITIES, RARITY_LABELS, RARITY_BASE_VALUE, SEASON_PRICE_MULTIPLIER } from '../game/cards';
 import { NPCS, friendshipTier, FRIENDSHIP_TIER_LABELS } from '../game/npcs';
@@ -12,7 +12,7 @@ import type { Card, ShopUpgrades, TownUpgrades, CombatUpgrades, MovementUpgrades
 import { PRESTIGE_PERKS } from '../game/prestige';
 import { OUTFITS, type OutfitDef } from '../game/outfits';
 import { DECOR_ITEMS, type DecorDef } from '../game/decor';
-import { FISH_SPECIES, FISHING_ENERGY_COST, type FishDef } from '../game/fishing';
+import { FISH_SPECIES, type FishDef } from '../game/fishing';
 import { PERKS, PERK_BRANCH_LABELS, type PerkBranch } from '../game/perks';
 
 /** Rush cost is a steep premium over the overnight price — pay for
@@ -793,7 +793,7 @@ function openZoneMapModal() {
       : `<button class="btn unlock-zone-btn" data-zone="${zone.id}" ${gameState.gold < zone.unlockCost ? 'disabled' : ''}>Unlock ${zone.unlockCost}g</button>`;
     const geared = gameState.attackDamage >= zone.recommendedAttack && gameState.maxHp >= zone.recommendedHp;
     const powerLineHtml =
-      zone.recommendedAttack > 14 || zone.recommendedHp > 100
+      zone.recommendedAttack > PLAYER_BASE_ATTACK_DAMAGE || zone.recommendedHp > PLAYER_BASE_MAX_HP
         ? `<div class="zone-power-line${geared ? ' zone-power-ready' : ' zone-power-under'}">
             Recommended: ${zone.recommendedAttack} attack / ${zone.recommendedHp} HP
             (you have ${gameState.attackDamage} / ${gameState.maxHp})${geared ? ' &#10003;' : ' — upgrade first!'}
@@ -911,7 +911,8 @@ function openFountainModal(result?: { fish: FishDef; goldEarned: number }) {
     closeModal();
     return;
   }
-  const canCast = gameState.energy >= FISHING_ENERGY_COST;
+  const castCost = gameState.fishingCastCost;
+  const canCast = gameState.energy >= castCost;
   const resultHtml = result
     ? `<div class="gift-feedback${result.fish.rarity === 'legendary' || result.fish.rarity === 'epic' ? ' gift-feedback-match' : ''}">
         Caught a <strong>${result.fish.name}</strong>! &middot; +${result.goldEarned}g
@@ -922,7 +923,7 @@ function openFountainModal(result?: { fish: FishDef; goldEarned: number }) {
 
   renderModal(`
     <h2>The Fountain</h2>
-    <p class="modal-sub">Toss a line in and see what bites — ${FISHING_ENERGY_COST} energy a cast, for a small, reliable bit of gold. No risk, no cards, just something else to do with the day.</p>
+    <p class="modal-sub">Toss a line in and see what bites — ${castCost} energy a cast, for a small, reliable bit of gold. No risk, no cards, just something else to do with the day.</p>
     ${resultHtml}
     <div class="modal-actions">
       <button class="btn cast-line-btn" ${canCast ? '' : 'disabled'}>${canCast ? 'Cast Line' : 'Too tired to fish'}</button>

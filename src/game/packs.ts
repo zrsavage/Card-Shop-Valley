@@ -57,7 +57,7 @@ export const PACKS: PackDefinition[] = [
   },
 ];
 
-function pickWeighted(weights: Record<Rarity, number>): Rarity {
+export function pickWeighted(weights: Record<Rarity, number>): Rarity {
   const entries = Object.entries(weights) as [Rarity, number][];
   const total = entries.reduce((sum, [, w]) => sum + w, 0);
   let roll = Math.random() * total;
