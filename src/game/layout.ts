@@ -10,11 +10,17 @@ export const REGISTER_QUEUE_SPACING = 26;
 export const SHOP_ENTRANCE_POS = { x: 400, y: 490 };
 export const SHOP_DOOR_TRIGGER = { x: 400, y: 585, w: 100, h: 24 };
 
-// --- Distributor interior (order packs/upgrades/provisions here — never
-// available same-day, and never at the player's own shop counter) ---
+// --- Distributor interior (order packs/upgrades here — never available
+// same-day, and never at the player's own shop counter) ---
 export const DISTRIBUTOR_COUNTER_POS = { x: 400, y: 110 };
 export const DISTRIBUTOR_ENTRANCE_POS = { x: 400, y: 490 };
 export const DISTRIBUTOR_DOOR_TRIGGER = { x: 400, y: 585, w: 100, h: 24 };
+
+// --- General Store interior (adventuring gear: provisions bought here take
+// effect on the spot, and it's also where the ranged weapon is unlocked) ---
+export const GENERAL_STORE_COUNTER_POS = { x: 400, y: 110 };
+export const GENERAL_STORE_ENTRANCE_POS = { x: 400, y: 490 };
+export const GENERAL_STORE_DOOR_TRIGGER = { x: 400, y: 585, w: 100, h: 24 };
 
 export interface ShelfPosition {
   x: number;
@@ -53,6 +59,11 @@ export const FOUNTAIN_RADIUS = 42;
 // the fountain, so walking out of it means heading down to reach it.
 export const TOWN_DISTRIBUTOR_TRIGGER = { x: 750, y: 60 };
 export const TOWN_DISTRIBUTOR_DOOR_POS = { x: 750, y: 150 };
+
+// General Store's exterior door — bottom wall, clear of the NPCs' usual
+// spots and the Wilds gate on the left wall.
+export const TOWN_GENERAL_STORE_TRIGGER = { x: 200, y: 585 };
+export const TOWN_GENERAL_STORE_DOOR_POS = { x: 200, y: 490 };
 
 // Only occupied (and only interactable) on the days the traveling merchant
 // is actually in town.

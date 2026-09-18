@@ -65,6 +65,17 @@ export const BAG_TIER_CAPACITY_BONUS = 8;
 export const ENERGY_TONIC_COST = 30;
 export const ENERGY_TONIC_RESTORE = 40;
 
+export const FIRST_AID_KIT_COST = 40;
+export const FIRST_AID_KIT_HEAL = 50;
+
+// Ranged weapon (General Store unlock): a slow, heavy hit — rooted in place
+// through the windup, in exchange for landing well above melee damage.
+export const RANGED_WINDUP_MS = 650;
+export const RANGED_COOLDOWN_MS = 1900;
+export const RANGED_DAMAGE_MULTIPLIER = 2.4;
+export const RANGED_PROJECTILE_SPEED = 480;
+export const RANGED_MAX_TRAVEL = 460;
+
 // Shop reputation — derived from lifetime sales, not stored directly, so it
 // only ever grows and can't be gamed by a save/reload. Higher tiers unlock
 // customer archetypes beyond the default browse-or-buy visitor.
@@ -146,6 +157,7 @@ function defaultCombatUpgrades(): CombatUpgrades {
     vitalityTier5: false,
     attackRangeTier1: false,
     attackRangeTier2: false,
+    rangedWeaponUnlocked: false,
   };
 }
 
@@ -870,6 +882,15 @@ class GameState {
   buyEnergyTonic(cost: number, restoreAmount: number): boolean {
     if (!this.spendGold(cost)) return false;
     this.restoreEnergy(restoreAmount);
+    return true;
+  }
+
+  /** First Aid Kit — General Store consumable, heals on the spot rather
+   * than being ordered like a Distributor good. */
+  useFirstAidKit(cost: number, healAmount: number): boolean {
+    if (!this.spendGold(cost)) return false;
+    this.hp = Math.min(this.maxHp, this.hp + healAmount);
+    bus.emit('hp-changed', this.hp);
     return true;
   }
 

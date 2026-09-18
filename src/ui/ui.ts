@@ -1,4 +1,4 @@
-import { gameState, bus, WEAPON_TIER_DAMAGE_BONUS, VITALITY_TIER_HP_BONUS, SPEED_TIER_BONUS, MELEE_RANGE_TIER_BONUS, ATTACK_ARC_TIER_BONUS, SEASONS, ENERGY_TONIC_COST, ENERGY_TONIC_RESTORE, PLAYER_BASE_ATTACK_DAMAGE, PLAYER_BASE_MAX_HP, type DaySummary } from '../game/state';
+import { gameState, bus, WEAPON_TIER_DAMAGE_BONUS, VITALITY_TIER_HP_BONUS, SPEED_TIER_BONUS, MELEE_RANGE_TIER_BONUS, ATTACK_ARC_TIER_BONUS, SEASONS, ENERGY_TONIC_COST, ENERGY_TONIC_RESTORE, FIRST_AID_KIT_COST, FIRST_AID_KIT_HEAL, PLAYER_BASE_ATTACK_DAMAGE, PLAYER_BASE_MAX_HP, type DaySummary } from '../game/state';
 import { PACKS, openPack, type PackDefinition } from '../game/packs';
 import { RARITIES, RARITY_LABELS, RARITY_BASE_VALUE, SEASON_PRICE_MULTIPLIER } from '../game/cards';
 import { NPCS, friendshipTier, FRIENDSHIP_TIER_LABELS } from '../game/npcs';
@@ -386,23 +386,8 @@ function pendingArrivalsHtml(): string {
   return packsSection + upgradesSection;
 }
 
-// --- Distributor (packs, provisions, shop upgrades — everything that used
-// to be bought at the player's own shop counter) ---
-
-function provisionsHtml(): string {
-  const energyFull = gameState.energy >= gameState.maxEnergy;
-  const canAfford = gameState.gold >= ENERGY_TONIC_COST;
-  return `
-    <div class="pack-row">
-      <div class="pack-swatch" style="background:#7ee787"></div>
-      <div class="pack-info">
-        <div class="pack-name">Energy Tonic</div>
-        <div class="pack-meta">Restores ${ENERGY_TONIC_RESTORE} energy on the spot.</div>
-      </div>
-      <button class="btn buy-tonic-btn" ${energyFull || !canAfford ? 'disabled' : ''} title="${energyFull ? 'Energy already full' : ''}">${ENERGY_TONIC_COST}g</button>
-    </div>
-  `;
-}
+// --- Distributor (packs and shop upgrades — everything that used to be
+// bought at the player's own shop counter) ---
 
 // The player's own register — managing packs already on hand (open/sell)
 // and, when someone's waiting, ringing up a sale. No buying happens here
@@ -485,8 +470,6 @@ function openDistributorModal() {
     <div class="pack-list">${packRows}</div>
     <h2 class="modal-section-title">Arriving Tomorrow</h2>
     ${pendingArrivalsHtml()}
-    <h2 class="modal-section-title">Provisions</h2>
-    <div class="pack-list">${provisionsHtml()}</div>
     <h2 class="modal-section-title">Shop Upgrades</h2>
     <div class="pack-list">${shopUpgradesHtml()}</div>
     <h2 class="modal-section-title">Shop Reputation</h2>
@@ -502,11 +485,6 @@ function openDistributorModal() {
       openDistributorModal();
     });
   });
-  modalLayer.querySelector('.buy-tonic-btn')?.addEventListener('click', () => {
-    if (!gameState.buyEnergyTonic(ENERGY_TONIC_COST, ENERGY_TONIC_RESTORE)) return;
-    playChime();
-    openDistributorModal();
-  });
   modalLayer.querySelectorAll<HTMLButtonElement>('.order-upgrade-btn').forEach((btn) => {
     btn.addEventListener('click', () => {
       const def = SHOP_UPGRADE_DEFS.find((d) => d.key === btn.dataset.key)!;
@@ -514,6 +492,84 @@ function openDistributorModal() {
       playChime();
       openDistributorModal();
     });
+  });
+  modalLayer.querySelector('.close-btn')!.addEventListener('click', closeModal);
+}
+
+// --- General Store (provisions bought here take effect instantly, plus
+// the ranged weapon unlock) ---
+
+const RANGED_WEAPON_COST = 900;
+
+function generalStoreProvisionsHtml(): string {
+  const energyFull = gameState.energy >= gameState.maxEnergy;
+  const canAffordDrink = gameState.gold >= ENERGY_TONIC_COST;
+  const hpFull = gameState.hp >= gameState.maxHp;
+  const canAffordKit = gameState.gold >= FIRST_AID_KIT_COST;
+  return `
+    <div class="pack-row">
+      <div class="pack-swatch" style="background:#c0392b"></div>
+      <div class="pack-info">
+        <div class="pack-name">First Aid Kit</div>
+        <div class="pack-meta">Heals ${FIRST_AID_KIT_HEAL} HP on the spot.</div>
+      </div>
+      <button class="btn buy-firstaid-btn" ${hpFull || !canAffordKit ? 'disabled' : ''} title="${hpFull ? 'HP already full' : ''}">${FIRST_AID_KIT_COST}g</button>
+    </div>
+    <div class="pack-row">
+      <div class="pack-swatch" style="background:#7ee787"></div>
+      <div class="pack-info">
+        <div class="pack-name">Energy Drink</div>
+        <div class="pack-meta">Restores ${ENERGY_TONIC_RESTORE} energy on the spot.</div>
+      </div>
+      <button class="btn buy-tonic-btn" ${energyFull || !canAffordDrink ? 'disabled' : ''} title="${energyFull ? 'Energy already full' : ''}">${ENERGY_TONIC_COST}g</button>
+    </div>
+  `;
+}
+
+function rangedWeaponRowHtml(): string {
+  const owned = gameState.combatUpgrades.rangedWeaponUnlocked;
+  const buttonHtml = owned
+    ? `<button class="btn btn-secondary" disabled>Owned</button>`
+    : `<button class="btn buy-ranged-btn" ${gameState.gold < RANGED_WEAPON_COST ? 'disabled' : ''}>${RANGED_WEAPON_COST}g</button>`;
+  return `
+    <div class="pack-row">
+      <div class="pack-info">
+        <div class="pack-name">Ranged Weapon</div>
+        <div class="pack-meta">
+          An alternate attack (press <strong>R</strong> in the Wilds) — rooted in place through a wind-up, but it hits far
+          harder than your melee swing once it lands.
+        </div>
+      </div>
+      ${buttonHtml}
+    </div>
+  `;
+}
+
+function openGeneralStoreModal() {
+  renderModal(`
+    <h2>General Store</h2>
+    <p class="modal-sub">Adventuring gear — everything here works the instant you buy it, unlike the Distributor's overnight orders.</p>
+    <h2 class="modal-section-title">Provisions</h2>
+    <div class="pack-list">${generalStoreProvisionsHtml()}</div>
+    <h2 class="modal-section-title">Weapons</h2>
+    <div class="pack-list">${rangedWeaponRowHtml()}</div>
+    <button class="btn btn-secondary close-btn">Close</button>
+  `);
+
+  modalLayer.querySelector('.buy-firstaid-btn')?.addEventListener('click', () => {
+    if (!gameState.useFirstAidKit(FIRST_AID_KIT_COST, FIRST_AID_KIT_HEAL)) return;
+    playChime();
+    openGeneralStoreModal();
+  });
+  modalLayer.querySelector('.buy-tonic-btn')?.addEventListener('click', () => {
+    if (!gameState.buyEnergyTonic(ENERGY_TONIC_COST, ENERGY_TONIC_RESTORE)) return;
+    playChime();
+    openGeneralStoreModal();
+  });
+  modalLayer.querySelector('.buy-ranged-btn')?.addEventListener('click', () => {
+    if (!gameState.purchaseCombatUpgrade('rangedWeaponUnlocked', RANGED_WEAPON_COST)) return;
+    playChime();
+    openGeneralStoreModal();
   });
   modalLayer.querySelector('.close-btn')!.addEventListener('click', closeModal);
 }
@@ -1654,6 +1710,34 @@ function openMenuModal(tab: MenuTab = activeMenuTab) {
   modalLayer.querySelector('.close-btn')!.addEventListener('click', closeModal);
 }
 
+// --- Intro (shown once, on a brand-new game) ---
+
+/** A tongue-in-cheek reason to be here at all — shown once, before the
+ * player's first move, on a save-free start. Nothing here is meant to be
+ * taken seriously; it's just enough of a hook to get the ball rolling. */
+export function showIntroModal() {
+  renderModal(`
+    <h2>How You Ended Up Here</h2>
+    <p class="modal-sub">
+      The letter arrived on a Tuesday, wedged between a parking ticket and a coupon for a
+      "Buy One Get One Free" hearing aid — no return address, suspiciously nice stationery:
+      <em>"You have inherited One (1) Card Shop in the town of Hearthollow. Please arrive by
+      sundown. Do not ask about the previous owner."</em>
+    </p>
+    <p class="modal-sub">
+      You didn't have anything better going on, so here you are: keys in hand, standing behind
+      a dusty counter in a town where the fountain doesn't run, the Town Hall clerk looks
+      personally offended by joy, and — for reasons absolutely nobody will explain — the woods
+      out back are full of monsters that occasionally drop trading cards. Seems fine. Probably fine.
+    </p>
+    <p class="modal-sub">
+      Anyway. You sell cards now. Let's make some gold.
+    </p>
+    <button class="btn intro-start-btn">Let's Get Started</button>
+  `);
+  modalLayer.querySelector('.intro-start-btn')!.addEventListener('click', closeModal);
+}
+
 // --- HUD ---
 
 function renderBagCount() {
@@ -1728,6 +1812,10 @@ export function initUI() {
     });
     const tonicBtn = modalLayer.querySelector<HTMLButtonElement>('.buy-tonic-btn');
     if (tonicBtn) tonicBtn.disabled = gold < ENERGY_TONIC_COST || gameState.energy >= gameState.maxEnergy;
+    const firstAidBtn = modalLayer.querySelector<HTMLButtonElement>('.buy-firstaid-btn');
+    if (firstAidBtn) firstAidBtn.disabled = gold < FIRST_AID_KIT_COST || gameState.hp >= gameState.maxHp;
+    const rangedBtn = modalLayer.querySelector<HTMLButtonElement>('.buy-ranged-btn');
+    if (rangedBtn) rangedBtn.disabled = gold < RANGED_WEAPON_COST;
     modalLayer.querySelectorAll<HTMLButtonElement>('.buy-upgrade-btn').forEach((btn) => {
       const def =
         TOWN_UPGRADE_DEFS.find((d) => d.key === btn.dataset.key) ??
@@ -1788,6 +1876,7 @@ export function initUI() {
   });
   bus.on('open-counter', openCounterModal);
   bus.on('open-distributor', openDistributorModal);
+  bus.on('open-general-store', openGeneralStoreModal);
   bus.on('open-haggle', (ticketId: number) => openHaggleModal(ticketId));
   bus.on('open-shelf', (shelfId: string) => openShelfModal(shelfId));
   bus.on('day-summary', (summary: DaySummary) => openDaySummaryModal(summary));

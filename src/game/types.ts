@@ -58,6 +58,9 @@ export interface CombatUpgrades {
    * player rather than a flat stat like the tiers above. */
   attackRangeTier1: boolean;
   attackRangeTier2: boolean;
+  /** Unlocks the alternate ranged attack (General Store) — a slow, heavy-
+   * hitting thrown/fired option alongside the default melee swing. */
+  rangedWeaponUnlocked: boolean;
 }
 
 export interface MovementUpgrades {

@@ -12,6 +12,8 @@ import {
   MERCHANT_CART_POS,
   TOWN_DISTRIBUTOR_TRIGGER,
   TOWN_DISTRIBUTOR_DOOR_POS,
+  TOWN_GENERAL_STORE_TRIGGER,
+  TOWN_GENERAL_STORE_DOOR_POS,
 } from '../game/layout';
 import type { Season } from '../game/types';
 import { humanoidTextureKey, playerTextureKey, attachCircleBody } from '../game/pixelArt';
@@ -51,7 +53,7 @@ export default class TownScene extends Phaser.Scene {
     super('Town');
   }
 
-  create(data?: { from?: 'shop' | 'wilds' | 'distributor' }) {
+  create(data?: { from?: 'shop' | 'wilds' | 'distributor' | 'general-store' }) {
     this.cameras.main.setBackgroundColor('#2b2118');
     this.npcVisuals = [];
     this.stepTimer = 0;
@@ -89,6 +91,14 @@ export default class TownScene extends Phaser.Scene {
         padding: { x: 6, y: 2 },
         fontStyle: 'bold',
       })
+      .setOrigin(0.5)
+      .setDepth(1);
+
+    // General Store's exterior — bottom wall, well clear of the NPCs'
+    // usual haunts and the Wilds gate.
+    this.add.rectangle(TOWN_GENERAL_STORE_TRIGGER.x, 598, 100, 8, 0x4a3728).setDepth(1);
+    this.add
+      .text(TOWN_GENERAL_STORE_TRIGGER.x, 575, 'GENERAL STORE\n▼', { fontSize: '10px', color: '#a1887f', align: 'center' })
       .setOrigin(0.5)
       .setDepth(1);
 
@@ -132,7 +142,13 @@ export default class TownScene extends Phaser.Scene {
 
     // Player — arrives at the door leading back from wherever they came from.
     const spawnPos =
-      data?.from === 'wilds' ? TOWN_FROM_WILDS_POS : data?.from === 'distributor' ? TOWN_DISTRIBUTOR_DOOR_POS : TOWN_SHOP_DOOR_POS;
+      data?.from === 'wilds'
+        ? TOWN_FROM_WILDS_POS
+        : data?.from === 'distributor'
+          ? TOWN_DISTRIBUTOR_DOOR_POS
+          : data?.from === 'general-store'
+            ? TOWN_GENERAL_STORE_DOOR_POS
+            : TOWN_SHOP_DOOR_POS;
     const playerTexture = playerTextureKey(this, gameState.equippedOutfitColor, 32);
     this.player = this.add.sprite(spawnPos.x, spawnPos.y, playerTexture).setDepth(5);
     this.physics.add.existing(this.player);
@@ -221,6 +237,7 @@ export default class TownScene extends Phaser.Scene {
       this.handleInteract();
       this.handleDoorTrigger();
       this.handleDistributorTrigger();
+      this.handleGeneralStoreTrigger();
       gameState.tickEnergy(delta);
       gameState.tickShopAutomation(delta);
       this.updateNpcPositions();
@@ -268,6 +285,13 @@ export default class TownScene extends Phaser.Scene {
     const d = Phaser.Math.Distance.Between(this.player.x, this.player.y, TOWN_DISTRIBUTOR_TRIGGER.x, TOWN_DISTRIBUTOR_TRIGGER.y);
     if (d < 40) {
       this.scene.start('Distributor');
+    }
+  }
+
+  private handleGeneralStoreTrigger() {
+    const d = Phaser.Math.Distance.Between(this.player.x, this.player.y, TOWN_GENERAL_STORE_TRIGGER.x, TOWN_GENERAL_STORE_TRIGGER.y);
+    if (d < 40) {
+      this.scene.start('GeneralStore');
     }
   }
 

@@ -1,5 +1,16 @@
 import Phaser from 'phaser';
-import { gameState, bus, WILDS_EXTRA_ENERGY_DRAIN_PER_SEC, EXHAUSTED_SPEED_MULTIPLIER, EXHAUSTED_DAMAGE_TAKEN_MULTIPLIER } from '../game/state';
+import {
+  gameState,
+  bus,
+  WILDS_EXTRA_ENERGY_DRAIN_PER_SEC,
+  EXHAUSTED_SPEED_MULTIPLIER,
+  EXHAUSTED_DAMAGE_TAKEN_MULTIPLIER,
+  RANGED_WINDUP_MS,
+  RANGED_COOLDOWN_MS,
+  RANGED_DAMAGE_MULTIPLIER,
+  RANGED_PROJECTILE_SPEED,
+  RANGED_MAX_TRAVEL,
+} from '../game/state';
 import { showFloatingText, showBannerText } from '../game/fx';
 import { ZONE_DEFS, rollPackDrop, BOSS_KILL_THRESHOLD, type EnemyDef, type ZoneDef, type BossSpecialAttack } from '../game/combat';
 import { PACKS } from '../game/packs';
@@ -26,6 +37,15 @@ const AOE_RADIUS = 130;
 const AOE_DAMAGE_MULTIPLIER = 1.6;
 const ZONE_CLEARED_NOTICE_MS = 3200;
 
+interface ProjectileInstance {
+  sprite: Phaser.GameObjects.Arc;
+  vx: number;
+  vy: number;
+  traveled: number;
+  damage: number;
+  geared: boolean;
+}
+
 interface EnemyInstance {
   def: EnemyDef;
   sprite: Phaser.GameObjects.Sprite;
@@ -49,10 +69,16 @@ export default class WildsScene extends Phaser.Scene {
   private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
   private wasd!: Record<'up' | 'down' | 'left' | 'right', Phaser.Input.Keyboard.Key>;
   private attackKey!: Phaser.Input.Keyboard.Key;
+  private rangedKey!: Phaser.Input.Keyboard.Key;
   private menuKey!: Phaser.Input.Keyboard.Key;
   private promptText!: Phaser.GameObjects.Text;
   private enemies: EnemyInstance[] = [];
+  private projectiles: ProjectileInstance[] = [];
   private attackCooldownRemaining = 0;
+  /** >0 means rooted, mid-windup on the ranged weapon; fires and resets to
+   * 0 once it counts down. */
+  private rangedWindupRemaining = 0;
+  private rangedCooldownRemaining = 0;
   private spawnTimer = 0;
   private nextSpawnAt = 1500;
   private lastDamageTime = 0;
@@ -75,7 +101,10 @@ export default class WildsScene extends Phaser.Scene {
     this.zone = ZONE_DEFS.find((z) => z.id === gameState.currentZoneId) ?? ZONE_DEFS[0];
     this.cameras.main.setBackgroundColor(this.zone.cameraBg);
     this.enemies = [];
+    this.projectiles = [];
     this.attackCooldownRemaining = 0;
+    this.rangedWindupRemaining = 0;
+    this.rangedCooldownRemaining = 0;
     this.spawnTimer = 0;
     this.nextSpawnAt = 1500;
     this.lastDamageTime = 0;
@@ -133,6 +162,7 @@ export default class WildsScene extends Phaser.Scene {
       right: this.input.keyboard!.addKey('D'),
     };
     this.attackKey = this.input.keyboard!.addKey('SPACE');
+    this.rangedKey = this.input.keyboard!.addKey('R');
     this.menuKey = this.input.keyboard!.addKey('E');
 
     if (!this.zoneCleared) {
@@ -165,6 +195,8 @@ export default class WildsScene extends Phaser.Scene {
     const moving = this.handleMovement();
     this.tickFootsteps(moving, delta);
     this.handleAttack();
+    this.tickRangedAttack(delta);
+    this.updateProjectiles(delta);
     this.handleReturnTrigger();
     if (Phaser.Input.Keyboard.JustDown(this.menuKey)) bus.emit('open-menu');
     this.updateEnemies(time, delta);
@@ -182,6 +214,12 @@ export default class WildsScene extends Phaser.Scene {
 
   private handleMovement(): boolean {
     const body = this.player.body as Phaser.Physics.Arcade.Body;
+    if (this.rangedWindupRemaining > 0) {
+      // Rooted in place while the ranged shot charges — the tradeoff for
+      // the extra damage once it actually fires.
+      body.setVelocity(0, 0);
+      return false;
+    }
     let vx = 0;
     let vy = 0;
     if (this.cursors.left?.isDown || this.wasd.left.isDown) vx -= 1;
@@ -219,6 +257,7 @@ export default class WildsScene extends Phaser.Scene {
   }
 
   private handleAttack() {
+    if (this.rangedWindupRemaining > 0) return;
     if (this.attackCooldownRemaining > 0) return;
     if (!Phaser.Input.Keyboard.JustDown(this.attackKey)) return;
     this.attackCooldownRemaining = ATTACK_COOLDOWN_MS * gameState.attackCooldownMultiplier;
@@ -254,6 +293,74 @@ export default class WildsScene extends Phaser.Scene {
         this.damageEnemy(enemy, gameState.attackDamage);
       } else {
         showFloatingText(this, enemy.sprite.x, enemy.sprite.y - enemy.def.radius - 6, `No Damage!`, '#a1887f');
+      }
+    }
+  }
+
+  /** The General Store's alternate weapon: press R to root in place and
+   * charge a shot, then fire it once the windup finishes. Slower and far
+   * more committal than the melee swing, but hits much harder. */
+  private tickRangedAttack(delta: number) {
+    if (this.rangedCooldownRemaining > 0) this.rangedCooldownRemaining -= delta;
+
+    if (this.rangedWindupRemaining > 0) {
+      this.rangedWindupRemaining -= delta;
+      if (this.rangedWindupRemaining <= 0) {
+        this.rangedWindupRemaining = 0;
+        this.fireProjectile();
+      }
+      return;
+    }
+
+    if (!gameState.combatUpgrades.rangedWeaponUnlocked) return;
+    if (this.rangedCooldownRemaining > 0) return;
+    if (!Phaser.Input.Keyboard.JustDown(this.rangedKey)) return;
+
+    this.rangedWindupRemaining = RANGED_WINDUP_MS;
+    this.rangedCooldownRemaining = RANGED_WINDUP_MS + RANGED_COOLDOWN_MS;
+
+    const charge = this.add.circle(this.player.x, this.player.y, 4, 0xffd166, 0.55).setDepth(6).setStrokeStyle(2, 0xff8500);
+    this.tweens.add({ targets: charge, radius: 22, alpha: 0, duration: RANGED_WINDUP_MS, onComplete: () => charge.destroy() });
+    showFloatingText(this, this.player.x, this.player.y - 30, 'Aiming...', '#ffd166', RANGED_WINDUP_MS);
+  }
+
+  private fireProjectile() {
+    const vx = Math.cos(this.facingAngle) * RANGED_PROJECTILE_SPEED;
+    const vy = Math.sin(this.facingAngle) * RANGED_PROJECTILE_SPEED;
+    const sprite = this.add.circle(this.player.x, this.player.y, 6, 0xffd166).setStrokeStyle(2, 0x2b1d0e).setDepth(6);
+    const geared = gameState.attackDamage >= this.zone.recommendedAttack;
+    const damage = Math.round(gameState.attackDamage * RANGED_DAMAGE_MULTIPLIER);
+    this.projectiles.push({ sprite, vx, vy, traveled: 0, damage, geared });
+    playHit();
+  }
+
+  private updateProjectiles(delta: number) {
+    const dt = delta / 1000;
+    for (const p of [...this.projectiles]) {
+      const stepX = p.vx * dt;
+      const stepY = p.vy * dt;
+      p.sprite.x += stepX;
+      p.sprite.y += stepY;
+      p.traveled += Math.hypot(stepX, stepY);
+
+      let hit = false;
+      for (const enemy of this.enemies) {
+        const d = Phaser.Math.Distance.Between(p.sprite.x, p.sprite.y, enemy.sprite.x, enemy.sprite.y);
+        if (d < enemy.def.radius + 6) {
+          if (p.geared) {
+            this.damageEnemy(enemy, p.damage);
+          } else {
+            showFloatingText(this, enemy.sprite.x, enemy.sprite.y - enemy.def.radius - 6, `No Damage!`, '#a1887f');
+          }
+          hit = true;
+          break;
+        }
+      }
+
+      const outOfBounds = p.sprite.x < 20 || p.sprite.x > 780 || p.sprite.y < 20 || p.sprite.y > 580;
+      if (hit || p.traveled >= RANGED_MAX_TRAVEL || outOfBounds) {
+        p.sprite.destroy();
+        this.projectiles = this.projectiles.filter((x) => x !== p);
       }
     }
   }
