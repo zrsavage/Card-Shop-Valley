@@ -26,6 +26,22 @@ const AMBIENT_VILLAGER_COUNT = 7;
 const AMBIENT_VILLAGER_COLORS = [0xffb703, 0x8ecae6, 0xc77dff, 0x90be6d, 0xf9844a, 0x577590, 0xe76f51, 0xa8dadc];
 const NPC_TRANSITION_MS = 2500;
 
+// Guards posted at the Wilds gate — purely decorative sentries that make the
+// gate read as an actual guarded checkpoint rather than a doorway. Stand
+// just inside the wall opening, flanking the path out.
+const GUARD_POSITIONS = [
+  { x: 72, y: 415 },
+  { x: 72, y: 485 },
+];
+const GUARD_COLOR = 0x37474f;
+
+// Once in a while (per Town visit), a kid tries to slip past the guards and
+// gets caught — a small scripted vignette, not an interactive event, just
+// another sign the town keeps going whether or not the player's watching.
+const CHILD_SNEAK_CHANCE = 0.4;
+const CHILD_START_POS = { x: 190, y: 400 };
+const CHILD_COLORS = [0xffd166, 0xff8fa3, 0x90e0ef, 0xb5e48c];
+
 const GROUND_TINTS: Record<Season, number> = {
   Spring: 0x8bc34a,
   Summer: 0x9ccc65,
@@ -92,12 +108,25 @@ export default class TownScene extends Phaser.Scene {
       .setOrigin(0.5)
       .setDepth(1);
 
-    // Wilds path (left wall)
+    // Wilds gate — the wall opening dressed up as an actual checkpoint
+    // (posts either side of the path) rather than a plain break in the
+    // wall, with two guards stationed in front of it.
     this.add.rectangle(28, TOWN_TO_WILDS_TRIGGER.y, 10, 110, 0x4a3728).setDepth(1);
     this.add
-      .text(52, TOWN_TO_WILDS_TRIGGER.y, 'WILDS\n◄', { fontSize: '11px', color: '#fff8ec', align: 'center' })
+      .text(52, TOWN_TO_WILDS_TRIGGER.y, 'WILDS GATE\n◄', { fontSize: '11px', color: '#fff8ec', align: 'center' })
       .setOrigin(0.5)
       .setDepth(1);
+    const gatePostColor = 0x4e342e;
+    this.add.rectangle(48, TOWN_TO_WILDS_TRIGGER.y - 55, 12, 40, gatePostColor).setDepth(2).setStrokeStyle(2, 0x2b1d0e);
+    this.add.rectangle(48, TOWN_TO_WILDS_TRIGGER.y + 55, 12, 40, gatePostColor).setDepth(2).setStrokeStyle(2, 0x2b1d0e);
+
+    const guardBodies: Phaser.Physics.Arcade.StaticBody[] = [];
+    for (const pos of GUARD_POSITIONS) {
+      const guardTexture = humanoidTextureKey(this, GUARD_COLOR, 30);
+      this.add.sprite(pos.x, pos.y, guardTexture).setDepth(4);
+      this.add.circle(pos.x, pos.y - 14, 5, 0x90a4ae).setDepth(5); // helmet glint
+      guardBodies.push(this.physics.add.staticBody(pos.x - 12, pos.y - 16, 24, 32));
+    }
 
     // Distributor's exterior door — on the top wall like the Shop's, but
     // well off to the right, clear of Town Hall's roof. An always-lit OPEN
@@ -197,6 +226,7 @@ export default class TownScene extends Phaser.Scene {
       (sprite.body as Phaser.Physics.Arcade.Body).setCollideWorldBounds(true);
       this.physics.add.collider(sprite, townHallBody);
       for (const houseBody of backgroundHouseBodies) this.physics.add.collider(sprite, houseBody);
+      for (const guardBody of guardBodies) this.physics.add.collider(sprite, guardBody);
       this.villagers.push({ sprite, wanderTarget: { x, y }, speed: Phaser.Math.Between(28, 48) });
     }
 
@@ -217,7 +247,14 @@ export default class TownScene extends Phaser.Scene {
     this.physics.world.setBounds(30, 30, 740, 540);
     this.physics.add.collider(this.player, townHallBody);
     for (const houseBody of backgroundHouseBodies) this.physics.add.collider(this.player, houseBody);
+    for (const guardBody of guardBodies) this.physics.add.collider(this.player, guardBody);
     for (const villager of this.villagers) this.physics.add.collider(this.player, villager.sprite);
+
+    // Occasionally, a kid tries their luck sneaking past the guards — a
+    // short scripted vignette rolled fresh each time Town loads.
+    if (Math.random() < CHILD_SNEAK_CHANCE) {
+      this.time.delayedCall(Phaser.Math.Between(2000, 6000), () => this.playChildSneakVignette());
+    }
 
     this.promptText = this.add
       .text(0, 0, '', { fontSize: '13px', color: '#ffffff', backgroundColor: '#000000aa', padding: { x: 6, y: 3 } })
@@ -269,6 +306,47 @@ export default class TownScene extends Phaser.Scene {
       .setDepth(0)
       .setStrokeStyle(2, 0x9c7c4f, 0.6);
     path.setRotation(angle);
+  }
+
+  /** A kid darts toward the Wilds gate, gets spotted by a guard, and
+   * scampers back into town — pure flavor, no gameplay effect, just makes
+   * the checkpoint feel like somewhere people actually try to slip past. */
+  private playChildSneakVignette() {
+    const gateX = 60;
+    const gateY = TOWN_TO_WILDS_TRIGGER.y;
+    const color = CHILD_COLORS[Math.floor(Math.random() * CHILD_COLORS.length)];
+    const texture = humanoidTextureKey(this, color, 18);
+    const child = this.add.sprite(CHILD_START_POS.x, CHILD_START_POS.y, texture).setDepth(4);
+
+    this.tweens.add({
+      targets: child,
+      x: gateX,
+      y: gateY,
+      duration: 1400,
+      ease: 'Sine.easeIn',
+      onComplete: () => {
+        const caught = this.add
+          .text(GUARD_POSITIONS[0].x, GUARD_POSITIONS[0].y - 34, '!', {
+            fontSize: '20px',
+            color: '#ffd166',
+            fontStyle: 'bold',
+            backgroundColor: '#000000aa',
+            padding: { x: 5, y: 1 },
+          })
+          .setOrigin(0.5)
+          .setDepth(6);
+        this.time.delayedCall(900, () => caught.destroy());
+        this.tweens.add({
+          targets: child,
+          x: CHILD_START_POS.x,
+          y: CHILD_START_POS.y + 20,
+          duration: 900,
+          delay: 250,
+          ease: 'Sine.easeOut',
+          onComplete: () => child.destroy(),
+        });
+      },
+    });
   }
 
   private updateMerchantVisibility() {

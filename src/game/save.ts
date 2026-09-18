@@ -4,6 +4,7 @@ import type {
   ShelfSlot,
   ShopUpgrades,
   TownUpgrades,
+  RecurringFees,
   CombatUpgrades,
   MovementUpgrades,
   NpcState,
@@ -20,6 +21,7 @@ interface SaveData {
   shelves: ShelfSlot[];
   shopUpgrades: ShopUpgrades;
   townUpgrades: TownUpgrades;
+  recurringFees: RecurringFees;
   combatUpgrades: CombatUpgrades;
   movementUpgrades: MovementUpgrades;
   npcs: Record<string, NpcState>;
@@ -55,6 +57,7 @@ export function saveGame() {
       shelves: gameState.shelves,
       shopUpgrades: gameState.shopUpgrades,
       townUpgrades: gameState.townUpgrades,
+      recurringFees: gameState.recurringFees,
       combatUpgrades: gameState.combatUpgrades,
       npcs: gameState.npcs,
       ownedPacks: gameState.ownedPacks,
@@ -107,6 +110,7 @@ export function loadGame(): boolean {
     }
     if (data.shopUpgrades) Object.assign(gameState.shopUpgrades, data.shopUpgrades);
     if (data.townUpgrades) Object.assign(gameState.townUpgrades, data.townUpgrades);
+    if (data.recurringFees) Object.assign(gameState.recurringFees, data.recurringFees);
     if (data.combatUpgrades) Object.assign(gameState.combatUpgrades, data.combatUpgrades);
     if (data.movementUpgrades) Object.assign(gameState.movementUpgrades, data.movementUpgrades);
     if (data.npcs) {
@@ -163,6 +167,7 @@ export function initAutosave() {
   bus.on('day-changed', queueSave);
   bus.on('shop-upgrades-changed', queueSave);
   bus.on('town-upgrades-changed', queueSave);
+  bus.on('recurring-fees-changed', queueSave);
   bus.on('combat-upgrades-changed', queueSave);
   bus.on('npc-changed', queueSave);
   bus.on('shelves-changed', queueSave);

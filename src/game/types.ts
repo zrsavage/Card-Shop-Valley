@@ -43,6 +43,16 @@ export interface TownUpgrades {
   festivalsUnlocked: boolean;
 }
 
+/** Weekly bills — a real cost of living on top of running the shop. Each
+ * flag is true once that specific fee has been permanently paid off at
+ * Town Hall, so it never comes out of the weekly total again. */
+export interface RecurringFees {
+  rentWaived: boolean;
+  processingFeeWaived: boolean;
+  mailInFeeWaived: boolean;
+  taxFeeWaived: boolean;
+}
+
 export interface CombatUpgrades {
   weaponTier1: boolean;
   weaponTier2: boolean;

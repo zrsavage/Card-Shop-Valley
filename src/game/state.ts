@@ -7,6 +7,7 @@ import type {
   TownUpgrades,
   CombatUpgrades,
   MovementUpgrades,
+  RecurringFees,
   NpcState,
   CardRequest,
   Rarity,
@@ -25,6 +26,7 @@ import { rollFish, FISHING_ENERGY_COST, type FishDef } from './fishing';
 import { DECOR_ITEMS } from './decor';
 import { PERKS } from './perks';
 import { DAILY_BOSS_KILL_CAP } from './combat';
+import { RECURRING_FEE_DEFS } from './fees';
 
 export const bus = new Phaser.Events.EventEmitter();
 
@@ -132,6 +134,11 @@ export interface DaySummary {
   cardsSold: number;
   packsArrived: number;
   upgradesArrived: number;
+  /** Total gold docked for this week's bills — 0 unless this was the 7th
+   * day of the week and at least one fee is still unpaid. */
+  feesCharged: number;
+  /** Names of the specific fees that were charged, for the summary line. */
+  feeNames: string[];
 }
 
 function defaultShopUpgrades(): ShopUpgrades {
@@ -151,6 +158,15 @@ function defaultTownUpgrades(): TownUpgrades {
   return {
     fountainRepaired: false,
     festivalsUnlocked: false,
+  };
+}
+
+function defaultRecurringFees(): RecurringFees {
+  return {
+    rentWaived: false,
+    processingFeeWaived: false,
+    mailInFeeWaived: false,
+    taxFeeWaived: false,
   };
 }
 
@@ -203,6 +219,7 @@ class GameState {
 
   shopUpgrades: ShopUpgrades = defaultShopUpgrades();
   townUpgrades: TownUpgrades = defaultTownUpgrades();
+  recurringFees: RecurringFees = defaultRecurringFees();
   combatUpgrades: CombatUpgrades = defaultCombatUpgrades();
   movementUpgrades: MovementUpgrades = defaultMovementUpgrades();
   npcs: Record<string, NpcState> = defaultNpcStates();
@@ -618,6 +635,21 @@ class GameState {
     return true;
   }
 
+  /** Total still due on the next weekly bill — every fee not yet paid off. */
+  get weeklyFeeTotal(): number {
+    return RECURRING_FEE_DEFS.reduce((sum, def) => sum + (this.recurringFees[def.key] ? 0 : def.weeklyCost), 0);
+  }
+
+  /** A one-time Town Hall purchase that permanently removes a specific fee
+   * from every future weekly bill — not a delayed unlock, just gone for good. */
+  payOffFee(key: keyof RecurringFees, cost: number): boolean {
+    if (this.recurringFees[key]) return false;
+    if (!this.spendGold(cost)) return false;
+    this.recurringFees[key] = true;
+    bus.emit('recurring-fees-changed', this.recurringFees);
+    return true;
+  }
+
   purchaseCombatUpgrade(key: keyof CombatUpgrades, cost: number): boolean {
     if (this.combatUpgrades[key]) return false;
     if (!this.spendGold(cost)) return false;
@@ -830,6 +862,7 @@ class GameState {
     this.shelves = SHOP_SHELF_POSITIONS.map((_, i) => ({ id: `shelf-${i}`, card: null, price: 0 }));
     this.shopUpgrades = defaultShopUpgrades();
     this.townUpgrades = defaultTownUpgrades();
+    this.recurringFees = defaultRecurringFees();
     this.combatUpgrades = defaultCombatUpgrades();
     this.movementUpgrades = defaultMovementUpgrades();
     this.npcs = defaultNpcStates();
@@ -992,6 +1025,16 @@ class GameState {
   /** Manually called — days no longer end on a timer, only when the player
    * chooses to (e.g. the End Day button). */
   endDay() {
+    // Bills come due every 7th day — rent and the town's more creative fees
+    // alike — for whichever of them haven't been permanently paid off yet.
+    // Never puts the player in debt; it just takes what's there.
+    const dueFees = this.day % 7 === 0 ? RECURRING_FEE_DEFS.filter((def) => !this.recurringFees[def.key]) : [];
+    const feesCharged = dueFees.reduce((sum, def) => sum + def.weeklyCost, 0);
+    if (feesCharged > 0) {
+      this.gold = Math.max(0, this.gold - feesCharged);
+      bus.emit('gold-changed', this.gold);
+    }
+
     const summary: DaySummary = {
       day: this.day,
       season: this.season,
@@ -999,6 +1042,8 @@ class GameState {
       cardsSold: this.cardsSoldToday,
       packsArrived: this.pendingPacks.length,
       upgradesArrived: this.pendingShopUpgrades.length,
+      feesCharged,
+      feeNames: dueFees.map((def) => def.name),
     };
     this.day += 1;
     this.goldEarnedToday = 0;

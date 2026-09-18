@@ -27,7 +27,8 @@ import { ZONE_DEFS, type ZoneDef } from '../game/combat';
 import { LEGACY_MILESTONES, LEGACY_CAPSTONE, type LegacyMilestone } from '../game/legacy';
 import { priceReactionFor } from '../game/pricing';
 import { playCardPop, playPackOpen, playLegendary, playChime, playCoin, playError } from '../game/audio';
-import type { Card, ShopUpgrades, TownUpgrades, CombatUpgrades, MovementUpgrades, Season, Rarity, BoardObjective, MerchantOffer } from '../game/types';
+import type { Card, ShopUpgrades, TownUpgrades, RecurringFees, CombatUpgrades, MovementUpgrades, Season, Rarity, BoardObjective, MerchantOffer } from '../game/types';
+import { RECURRING_FEE_DEFS } from '../game/fees';
 import { PRESTIGE_PERKS } from '../game/prestige';
 import { OUTFITS, type OutfitDef } from '../game/outfits';
 import { DECOR_ITEMS, type DecorDef } from '../game/decor';
@@ -310,6 +311,27 @@ function upgradeRowHtml(
       <div class="pack-info">
         <div class="pack-name">${name}</div>
         <div class="pack-meta">${description}</div>
+      </div>
+      ${buttonHtml}
+    </div>
+  `;
+}
+
+// Recurring fees read differently from a one-time upgrade: the "buy" button
+// permanently waives a weekly charge rather than granting something new, so
+// it gets its own row shape (weekly cost shown, "Paid Off" instead of
+// "Owned") rather than reusing upgradeRowHtml's wording.
+function feeRowHtml(key: keyof RecurringFees): string {
+  const def = RECURRING_FEE_DEFS.find((d) => d.key === key)!;
+  const waived = gameState.recurringFees[key];
+  const buttonHtml = waived
+    ? `<button class="btn btn-secondary" disabled>Paid Off</button>`
+    : `<button class="btn buy-upgrade-btn" data-key="${key}" ${gameState.gold < def.payoffCost ? 'disabled' : ''}>Pay Off ${def.payoffCost}g</button>`;
+  return `
+    <div class="pack-row">
+      <div class="pack-info">
+        <div class="pack-name">${def.name}${waived ? ' — waived' : ` — ${def.weeklyCost}g/week`}</div>
+        <div class="pack-meta">${def.description}</div>
       </div>
       ${buttonHtml}
     </div>
@@ -991,9 +1013,13 @@ function openDaySummaryModal(summary: DaySummary) {
     summary.upgradesArrived > 0
       ? `<br>&#128230; ${summary.upgradesArrived} upgrade${summary.upgradesArrived === 1 ? '' : 's'} installed overnight — courtesy of the Distributor.`
       : '';
+  const feesLine =
+    summary.feesCharged > 0
+      ? `<br>&#128179; This week's bill: <strong>${summary.feesCharged}g</strong> (${summary.feeNames.join(', ')}). Pay fees off for good at Town Hall.`
+      : '';
   renderModal(`
     <h2>Day ${summary.day} Complete!</h2>
-    <p class="modal-sub">${SEASON_SET_NAME[summary.season]} &middot; Earned <strong>${summary.goldEarned}g</strong> from ${summary.cardsSold} sale${summary.cardsSold === 1 ? '' : 's'}.${packsLine}${upgradesLine}</p>
+    <p class="modal-sub">${SEASON_SET_NAME[summary.season]} &middot; Earned <strong>${summary.goldEarned}g</strong> from ${summary.cardsSold} sale${summary.cardsSold === 1 ? '' : 's'}.${packsLine}${upgradesLine}${feesLine}</p>
     <button class="btn start-day-btn">Start Day ${summary.day + 1}</button>
   `);
   modalLayer.querySelector('.start-day-btn')!.addEventListener('click', closeModal);
@@ -1040,12 +1066,17 @@ function openTownHallModal() {
     return upgradeRowHtml(def.key, def.name, def.cost, def.description, owned, locked);
   }).join('');
 
+  const feeRows = RECURRING_FEE_DEFS.map((def) => feeRowHtml(def.key)).join('');
+
   renderModal(`
     <h2>Town Hall</h2>
     <p class="modal-sub">Invest your gold back into the town.</p>
     <h2 class="modal-section-title">Town Board — today's objectives</h2>
     <p class="modal-sub">Rerolls at the end of every day — unclaimed rewards don't carry over.</p>
     <div class="legacy-list">${gameState.townBoard.map(townBoardRowHtml).join('')}</div>
+    <h2 class="modal-section-title">Weekly Bills</h2>
+    <p class="modal-sub">Due every 7th day, whether or not the shop sold anything &mdash; currently <strong>${gameState.weeklyFeeTotal}g/week</strong>. Pay a fee off once here and it's gone for good.</p>
+    <div class="pack-list">${feeRows}</div>
     <h2 class="modal-section-title">Town Upgrades</h2>
     <div class="pack-list">${rows}</div>
     <h2 class="modal-section-title">Adventuring Upgrades</h2>
@@ -1069,12 +1100,15 @@ function openTownHallModal() {
       const townDef = TOWN_UPGRADE_DEFS.find((d) => d.key === btn.dataset.key);
       const combatDef = COMBAT_UPGRADE_DEFS.find((d) => d.key === btn.dataset.key);
       const movementDef = MOVEMENT_UPGRADE_DEFS.find((d) => d.key === btn.dataset.key);
+      const feeDef = RECURRING_FEE_DEFS.find((d) => d.key === btn.dataset.key);
       if (townDef) {
         gameState.purchaseTownUpgrade(townDef.key, townDef.cost);
       } else if (combatDef) {
         gameState.purchaseCombatUpgrade(combatDef.key, combatDef.cost);
       } else if (movementDef) {
         gameState.purchaseMovementUpgrade(movementDef.key, movementDef.cost);
+      } else if (feeDef) {
+        gameState.payOffFee(feeDef.key, feeDef.payoffCost);
       }
       openTownHallModal();
     });
