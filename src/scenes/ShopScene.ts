@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { gameState, bus } from '../game/state';
-import { spawnCustomer } from '../game/Customer';
+import { spawnCustomer, checkoutQueue, clearCheckoutQueue } from '../game/Customer';
 import { COUNTER_POS, SHOP_ENTRANCE_POS, SHOP_DOOR_TRIGGER, SHOP_SHELF_POSITIONS } from '../game/layout';
 import type { ShelfPosition } from '../game/layout';
 import { playerTextureKey, attachCircleBody } from '../game/pixelArt';
@@ -60,7 +60,7 @@ export default class ShopScene extends Phaser.Scene {
     this.add.rectangle(COUNTER_POS.x, COUNTER_POS.y, 180, 60, 0x000000, 0).setDepth(2).setStrokeStyle(3, 0x2b1d0e);
     this.add.rectangle(COUNTER_POS.x, COUNTER_POS.y - 22, 180, 14, 0xd9a066).setDepth(2).setStrokeStyle(1, 0x8a6a1a);
     this.add
-      .text(COUNTER_POS.x, COUNTER_POS.y, 'PACK\nCOUNTER', { fontSize: '14px', color: '#fff5e1', align: 'center' })
+      .text(COUNTER_POS.x, COUNTER_POS.y, 'REGISTER', { fontSize: '14px', color: '#fff5e1', align: 'center' })
       .setOrigin(0.5)
       .setDepth(3);
     const counterBody = this.physics.add.staticBody(COUNTER_POS.x - 90, COUNTER_POS.y - 30, 180, 60);
@@ -113,6 +113,10 @@ export default class ShopScene extends Phaser.Scene {
       bus.off('paused-changed', this.onPausedChanged, this);
       bus.off('day-summary', this.onDaySummary, this);
       bus.off('cosmetics-changed', this.onCosmeticsChanged, this);
+      // Customers waiting at the register don't survive leaving the shop —
+      // their sprites are about to be destroyed along with the rest of the
+      // scene's display list, so drop any stale tickets pointing at them.
+      clearCheckoutQueue();
     });
   }
 
@@ -200,6 +204,7 @@ export default class ShopScene extends Phaser.Scene {
 
   private onDaySummary() {
     this.children.list.filter((c) => (c as any).__customer).forEach((c) => (c as any).destroy?.());
+    clearCheckoutQueue();
   }
 
   private refreshShelfVisuals() {
@@ -286,7 +291,12 @@ export default class ShopScene extends Phaser.Scene {
   private handleInteract() {
     const target = this.nearestInteractable();
     if (target) {
-      const label = target.type === 'counter' ? 'Press E: Shop Counter' : 'Press E: Manage Shelf';
+      const label =
+        target.type === 'counter'
+          ? checkoutQueue.length > 0
+            ? 'Press E: Ring Up Customer'
+            : 'Press E: Register'
+          : 'Press E: Manage Shelf';
       this.promptText.setText(label).setPosition(target.x, target.y - 55).setVisible(true);
     } else {
       this.promptText.setVisible(false);
@@ -296,7 +306,8 @@ export default class ShopScene extends Phaser.Scene {
       if (!target) {
         bus.emit('open-menu');
       } else if (target.type === 'counter') {
-        bus.emit('open-counter');
+        if (checkoutQueue.length > 0) bus.emit('open-haggle', checkoutQueue[0].id);
+        else bus.emit('open-counter');
       } else {
         bus.emit('open-shelf', target.id);
       }

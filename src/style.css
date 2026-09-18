@@ -1117,3 +1117,61 @@ html, body {
   background: #2b1d0e;
   color: #fff8ec;
 }
+
+/* --- Haggling minigame (the register) --- */
+
+.haggle-track {
+  position: relative;
+  height: 34px;
+  border-radius: 10px;
+  overflow: hidden;
+  border: 2px solid #2b1d0e;
+  display: flex;
+  margin-bottom: 10px;
+}
+
+.haggle-zone {
+  height: 100%;
+}
+
+.haggle-zone-bad {
+  flex: 17.5;
+  background: #c92a2a;
+}
+
+.haggle-zone-ok {
+  flex: 25;
+  background: #d9a066;
+}
+
+.haggle-zone-great {
+  flex: 15;
+  background: #2b8a3e;
+}
+
+.haggle-marker {
+  position: absolute;
+  top: -4px;
+  left: 0;
+  width: 6px;
+  height: 42px;
+  background: #fff8ec;
+  border: 2px solid #2b1d0e;
+  border-radius: 3px;
+  transform: translateX(-50%);
+  transition: left 0.03s linear;
+}
+
+.haggle-marker-stopped {
+  background: #ffd166;
+}
+
+.haggle-result {
+  min-height: 18px;
+  font-weight: 700;
+  text-align: center;
+}
+
+.haggle-stop-btn {
+  width: 100%;
+}

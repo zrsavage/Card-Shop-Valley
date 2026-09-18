@@ -14,10 +14,7 @@ import { OUTFITS, type OutfitDef } from '../game/outfits';
 import { DECOR_ITEMS, type DecorDef } from '../game/decor';
 import { FISH_SPECIES, type FishDef } from '../game/fishing';
 import { PERKS, PERK_BRANCH_LABELS, type PerkBranch } from '../game/perks';
-
-/** Rush cost is a steep premium over the overnight price — pay for
- * convenience, not a strictly better deal than waiting. */
-const RUSH_DELIVERY_MULTIPLIER = 1.8;
+import { checkoutQueue, completeCheckout } from '../game/Customer';
 
 function effectivePackCost(pack: PackDefinition): number {
   return Math.round(pack.cost * SEASON_PRICE_MULTIPLIER[gameState.season]);
@@ -86,16 +83,22 @@ function compactCardRowHtml(card: Card, idx: number, trailingHtml: string, highl
 // Every modal gets the same top-corner X regardless of which tab/screen is
 // open — "close everything" shouldn't depend on hunting down that screen's
 // own Close/Cancel button. Most modals can just fully close; the pack
-// reveal passes its own onCloseX so bailing mid-reveal still banks the cards
-// instead of silently losing a just-opened pack's pulls.
+// reveal and the haggle minigame pass their own onCloseX so bailing early
+// still banks the cards / settles the sale instead of losing it outright.
+// Escape (see initUI) runs this same handler, not a bare closeModal, so it
+// can't be used to dodge that cleanup either.
+let activeCloseHandler: () => void = () => {};
+
 function renderModal(inner: string, onCloseX: () => void = closeModal) {
   modalLayer.innerHTML = `<div class="modal-backdrop"><div class="modal"><button class="modal-x-btn" aria-label="Close">&times;</button>${inner}</div></div>`;
+  activeCloseHandler = onCloseX;
   modalLayer.querySelector('.modal-x-btn')!.addEventListener('click', onCloseX);
   gameState.setPaused(true);
 }
 
 function closeModal() {
   modalLayer.innerHTML = '';
+  activeCloseHandler = () => {};
   gameState.setPaused(false);
 }
 
@@ -293,11 +296,34 @@ function upgradeRowHtml(
   `;
 }
 
+// Shop upgrades are ordered here, not bought outright — they're a
+// Distributor good like packs, so the row needs its own "on order" state
+// instead of the generic owned/locked/buy shape upgradeRowHtml() covers.
 function shopUpgradesHtml(): string {
   return SHOP_UPGRADE_DEFS.map((def) => {
     const owned = gameState.shopUpgrades[def.key];
-    const locked = !!def.requiresKey && !gameState.shopUpgrades[def.requiresKey];
-    return upgradeRowHtml(def.key, def.name, def.cost, def.description, owned, locked);
+    const pending = gameState.pendingShopUpgrades.includes(def.key);
+    const requirementMet = !def.requiresKey || gameState.shopUpgrades[def.requiresKey] || gameState.pendingShopUpgrades.includes(def.requiresKey);
+    const locked = !requirementMet;
+    let buttonHtml: string;
+    if (owned) {
+      buttonHtml = `<button class="btn btn-secondary" disabled>Owned</button>`;
+    } else if (pending) {
+      buttonHtml = `<button class="btn btn-secondary" disabled>Ordered</button>`;
+    } else if (locked) {
+      buttonHtml = `<button class="btn btn-secondary" disabled>Locked</button>`;
+    } else {
+      buttonHtml = `<button class="btn order-upgrade-btn" data-key="${def.key}" ${gameState.gold < def.cost ? 'disabled' : ''}>${def.cost}g</button>`;
+    }
+    return `
+      <div class="pack-row">
+        <div class="pack-info">
+          <div class="pack-name">${def.name}</div>
+          <div class="pack-meta">${def.description}</div>
+        </div>
+        ${buttonHtml}
+      </div>
+    `;
   }).join('');
 }
 
@@ -333,22 +359,35 @@ function packCountRows(packIds: string[], ready: boolean): string {
 }
 
 function ownedPacksHtml(): string {
-  const readySection =
-    gameState.ownedPacks.length > 0
-      ? `<div class="pack-list">${packCountRows(gameState.ownedPacks, true)}</div>`
-      : `<p class="modal-sub">No packs ready to open yet — order one below (it'll be here tomorrow), or defeat enemies in the Wilds for an instant one.</p>`;
-  const pendingSection =
-    gameState.pendingPacks.length > 0
-      ? `<h2 class="modal-section-title">Arriving Tomorrow</h2><div class="pack-list">${packCountRows(gameState.pendingPacks, false)}</div>`
+  return gameState.ownedPacks.length > 0
+    ? `<div class="pack-list">${packCountRows(gameState.ownedPacks, true)}</div>`
+    : `<p class="modal-sub">No packs ready to open yet — order one at the Distributor (it'll be here tomorrow), or defeat enemies in the Wilds for an instant one.</p>`;
+}
+
+// What's currently on order at the Distributor and not here yet — packs and
+// shop upgrades alike, since neither is available same-day any more.
+function pendingArrivalsHtml(): string {
+  const packsSection = gameState.pendingPacks.length > 0 ? `<div class="pack-list">${packCountRows(gameState.pendingPacks, false)}</div>` : '';
+  const upgradesSection =
+    gameState.pendingShopUpgrades.length > 0
+      ? `<div class="pack-list">${gameState.pendingShopUpgrades
+          .map((key) => {
+            const def = SHOP_UPGRADE_DEFS.find((d) => d.key === key)!;
+            return `
+              <div class="pack-row pack-row-pending">
+                <div class="pack-info"><div class="pack-name">${def.name}</div></div>
+                <span class="pack-pending-tag">Installing tomorrow</span>
+              </div>
+            `;
+          })
+          .join('')}</div>`
       : '';
-  return readySection + pendingSection;
+  if (!packsSection && !upgradesSection) return `<p class="modal-sub">Nothing on order right now.</p>`;
+  return packsSection + upgradesSection;
 }
 
-// --- Counter (packs + shop upgrades) ---
-
-function rushCost(pack: PackDefinition): number {
-  return Math.round(effectivePackCost(pack) * RUSH_DELIVERY_MULTIPLIER);
-}
+// --- Distributor (packs, provisions, shop upgrades — everything that used
+// to be bought at the player's own shop counter) ---
 
 function provisionsHtml(): string {
   const energyFull = gameState.energy >= gameState.maxEnergy;
@@ -365,71 +404,17 @@ function provisionsHtml(): string {
   `;
 }
 
+// The player's own register — managing packs already on hand (open/sell)
+// and, when someone's waiting, ringing up a sale. No buying happens here
+// any more; that's all at the Distributor now.
 function openCounterModal() {
-  const multiplier = SEASON_PRICE_MULTIPLIER[gameState.season];
-  const packRows = PACKS.map((p) => {
-    const cost = effectivePackCost(p);
-    const rush = rushCost(p);
-    return `
-      <div class="pack-row">
-        <div class="pack-swatch" style="background:${colorToCss(p.color)}"></div>
-        <div class="pack-info">
-          <div class="pack-name">${p.name}</div>
-          <div class="pack-meta">${p.cardCount} cards &middot; ${SEASON_SET_NAME[gameState.season]}</div>
-        </div>
-        <div class="pack-actions-col">
-          <button class="btn btn-small buy-pack-btn" data-pack="${p.id}" ${gameState.gold < cost ? 'disabled' : ''} title="Arrives tomorrow">${cost}g</button>
-          <button class="btn btn-small btn-secondary rush-pack-btn" data-pack="${p.id}" ${gameState.gold < rush ? 'disabled' : ''} title="Get it right now, for a premium">Rush ${rush}g</button>
-        </div>
-      </div>
-    `;
-  }).join('');
-
-  const daysLeft = gameState.daysLeftInSeason;
-  const seasonWarning =
-    daysLeft <= 1
-      ? `<br><strong class="season-countdown-urgent">${daysLeft === 0 ? "Last day for this set!" : "1 day left for this set!"}</strong> ${SEASON_SET_NAME[gameState.season]} rotates out once the season ends.`
-      : `<br><span class="season-countdown">${daysLeft} days left</span> before ${SEASON_SET_NAME[gameState.season]} rotates out for the season.`;
-
-  const rep = gameState.reputationTier;
-  const nextRep = gameState.nextReputationTier;
-  const repLine = nextRep
-    ? `<strong>${rep.name}</strong> &middot; ${nextRep.minSales - gameState.lifetimeCardsSold} more lifetime sale${nextRep.minSales - gameState.lifetimeCardsSold === 1 ? '' : 's'} to reach ${nextRep.name}`
-    : `<strong>${rep.name}</strong> &middot; the shop's reputation is maxed out`;
-
   renderModal(`
-    <h2>Pack Counter</h2>
-    <p class="modal-sub">
-      Now stocking <strong>${SEASON_SET_NAME[gameState.season]}</strong> — order a pack and it'll arrive tomorrow, or pay for Rush delivery to open it right now.
-      ${multiplier !== 1 ? `<br><strong>${gameState.season} market:</strong> prices &times;${multiplier}.` : ''}
-      ${seasonWarning}
-    </p>
-    <div class="pack-list">${packRows}</div>
+    <h2>Register</h2>
     <h2 class="modal-section-title">Your Packs</h2>
     ${ownedPacksHtml()}
-    <h2 class="modal-section-title">Provisions</h2>
-    <div class="pack-list">${provisionsHtml()}</div>
-    <h2 class="modal-section-title">Shop Reputation</h2>
-    <p class="modal-sub reputation-line">${repLine}</p>
-    <h2 class="modal-section-title">Shop Upgrades</h2>
-    <div class="pack-list">${shopUpgradesHtml()}</div>
     <button class="btn btn-secondary close-btn">Close</button>
   `);
 
-  modalLayer.querySelectorAll<HTMLButtonElement>('.buy-pack-btn').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const pack = PACKS.find((p) => p.id === btn.dataset.pack) as PackDefinition;
-      if (!gameState.buyPackPending(pack.id, effectivePackCost(pack))) return;
-      openCounterModal();
-    });
-  });
-  modalLayer.querySelectorAll<HTMLButtonElement>('.rush-pack-btn').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const pack = PACKS.find((p) => p.id === btn.dataset.pack) as PackDefinition;
-      if (!gameState.buyPackRush(pack.id, rushCost(pack))) return;
-      openCounterModal();
-    });
-  });
   modalLayer.querySelectorAll<HTMLButtonElement>('.open-owned-pack-btn').forEach((btn) => {
     btn.addEventListener('click', () => {
       const packId = btn.dataset.pack!;
@@ -455,19 +440,179 @@ function openCounterModal() {
       openCounterModal();
     });
   });
+  modalLayer.querySelector('.close-btn')!.addEventListener('click', closeModal);
+}
+
+// Everything you'd buy for the shop — packs, provisions, upgrades — now
+// lives here instead, and nothing ordered shows up before tomorrow.
+function openDistributorModal() {
+  const multiplier = SEASON_PRICE_MULTIPLIER[gameState.season];
+  const packRows = PACKS.map((p) => {
+    const cost = effectivePackCost(p);
+    return `
+      <div class="pack-row">
+        <div class="pack-swatch" style="background:${colorToCss(p.color)}"></div>
+        <div class="pack-info">
+          <div class="pack-name">${p.name}</div>
+          <div class="pack-meta">${p.cardCount} cards &middot; ${SEASON_SET_NAME[gameState.season]}</div>
+        </div>
+        <button class="btn btn-small buy-pack-btn" data-pack="${p.id}" ${gameState.gold < cost ? 'disabled' : ''} title="Arrives tomorrow">${cost}g</button>
+      </div>
+    `;
+  }).join('');
+
+  const daysLeft = gameState.daysLeftInSeason;
+  const seasonWarning =
+    daysLeft <= 1
+      ? `<br><strong class="season-countdown-urgent">${daysLeft === 0 ? "Last day for this set!" : "1 day left for this set!"}</strong> ${SEASON_SET_NAME[gameState.season]} rotates out once the season ends.`
+      : `<br><span class="season-countdown">${daysLeft} days left</span> before ${SEASON_SET_NAME[gameState.season]} rotates out for the season.`;
+
+  const rep = gameState.reputationTier;
+  const nextRep = gameState.nextReputationTier;
+  const repLine = nextRep
+    ? `<strong>${rep.name}</strong> &middot; ${nextRep.minSales - gameState.lifetimeCardsSold} more lifetime sale${nextRep.minSales - gameState.lifetimeCardsSold === 1 ? '' : 's'} to reach ${nextRep.name}`
+    : `<strong>${rep.name}</strong> &middot; the shop's reputation is maxed out`;
+
+  renderModal(`
+    <h2>Distributor</h2>
+    <p class="modal-sub">
+      Now stocking <strong>${SEASON_SET_NAME[gameState.season]}</strong>. Everything here ships overnight — packs, provisions,
+      and upgrades alike are never available same-day.
+      ${multiplier !== 1 ? `<br><strong>${gameState.season} market:</strong> pack prices &times;${multiplier}.` : ''}
+      ${seasonWarning}
+    </p>
+    <h2 class="modal-section-title">Order Packs</h2>
+    <div class="pack-list">${packRows}</div>
+    <h2 class="modal-section-title">Arriving Tomorrow</h2>
+    ${pendingArrivalsHtml()}
+    <h2 class="modal-section-title">Provisions</h2>
+    <div class="pack-list">${provisionsHtml()}</div>
+    <h2 class="modal-section-title">Shop Upgrades</h2>
+    <div class="pack-list">${shopUpgradesHtml()}</div>
+    <h2 class="modal-section-title">Shop Reputation</h2>
+    <p class="modal-sub reputation-line">${repLine}</p>
+    <button class="btn btn-secondary close-btn">Close</button>
+  `);
+
+  modalLayer.querySelectorAll<HTMLButtonElement>('.buy-pack-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const pack = PACKS.find((p) => p.id === btn.dataset.pack) as PackDefinition;
+      if (!gameState.buyPackPending(pack.id, effectivePackCost(pack))) return;
+      playChime();
+      openDistributorModal();
+    });
+  });
   modalLayer.querySelector('.buy-tonic-btn')?.addEventListener('click', () => {
     if (!gameState.buyEnergyTonic(ENERGY_TONIC_COST, ENERGY_TONIC_RESTORE)) return;
     playChime();
-    openCounterModal();
+    openDistributorModal();
   });
-  modalLayer.querySelectorAll<HTMLButtonElement>('.buy-upgrade-btn').forEach((btn) => {
+  modalLayer.querySelectorAll<HTMLButtonElement>('.order-upgrade-btn').forEach((btn) => {
     btn.addEventListener('click', () => {
       const def = SHOP_UPGRADE_DEFS.find((d) => d.key === btn.dataset.key)!;
-      gameState.purchaseShopUpgrade(def.key, def.cost);
-      openCounterModal();
+      if (!gameState.orderShopUpgrade(def.key, def.cost)) return;
+      playChime();
+      openDistributorModal();
     });
   });
   modalLayer.querySelector('.close-btn')!.addEventListener('click', closeModal);
+}
+
+// --- Haggling (the register) ---
+//
+// A customer at the register is trying to talk the price down — a quick
+// timing minigame decides how well that goes. A marker sweeps back and
+// forth across a track; where it's sitting when the player stops it sets
+// the final price, from a discount at the edges to a small bonus dead center.
+
+const HAGGLE_SWEEP_MS = 1300; // one edge-to-edge pass
+const HAGGLE_TIMEOUT_MS = 6000; // no response at all reads as a miss
+
+interface HaggleZone {
+  /** Upper bound of this zone, as a percent along the track (0-100). */
+  max: number;
+  multiplier: number;
+  label: string;
+}
+
+const HAGGLE_ZONES: HaggleZone[] = [
+  { max: 17.5, multiplier: 0.75, label: 'They talked you down.' },
+  { max: 42.5, multiplier: 1, label: 'Sold at a fair price.' },
+  { max: 57.5, multiplier: 1.15, label: 'Great haggling! Sold above asking.' },
+  { max: 82.5, multiplier: 1, label: 'Sold at a fair price.' },
+  { max: 100.01, multiplier: 0.75, label: 'They talked you down.' },
+];
+
+function haggleResultFor(pct: number): { multiplier: number; label: string } {
+  return HAGGLE_ZONES.find((z) => pct <= z.max) ?? HAGGLE_ZONES[HAGGLE_ZONES.length - 1];
+}
+
+function openHaggleModal(ticketId: number) {
+  const ticket = checkoutQueue.find((t) => t.id === ticketId);
+  if (!ticket) return;
+
+  let resolved = false;
+  let rafId = 0;
+  const startedAt = performance.now();
+
+  function currentPct(): number {
+    const elapsed = performance.now() - startedAt;
+    const phase = (elapsed % (HAGGLE_SWEEP_MS * 2)) / HAGGLE_SWEEP_MS;
+    return phase <= 1 ? phase * 100 : (2 - phase) * 100;
+  }
+
+  function finish(multiplier: number, label: string) {
+    if (resolved) return;
+    resolved = true;
+    cancelAnimationFrame(rafId);
+    const marker = modalLayer.querySelector('#haggle-marker') as HTMLDivElement | null;
+    const resultEl = modalLayer.querySelector('#haggle-result') as HTMLDivElement | null;
+    const stopBtn = modalLayer.querySelector<HTMLButtonElement>('.haggle-stop-btn');
+    if (stopBtn) stopBtn.disabled = true;
+    if (resultEl) resultEl.textContent = label;
+    if (marker) marker.classList.add('haggle-marker-stopped');
+    playChime();
+    setTimeout(() => {
+      completeCheckout(ticketId, multiplier);
+      closeModal();
+    }, 900);
+  }
+
+  renderModal(
+    `
+    <h2>Haggling</h2>
+    <p class="modal-sub">${ticket.card.name} — listed at ${ticket.price}g. They're angling for a discount — stop the marker in the middle to hold your price!</p>
+    <div class="haggle-track">
+      <div class="haggle-zone haggle-zone-bad"></div>
+      <div class="haggle-zone haggle-zone-ok"></div>
+      <div class="haggle-zone haggle-zone-great"></div>
+      <div class="haggle-zone haggle-zone-ok"></div>
+      <div class="haggle-zone haggle-zone-bad"></div>
+      <div class="haggle-marker" id="haggle-marker"></div>
+    </div>
+    <p class="modal-sub haggle-result" id="haggle-result">&nbsp;</p>
+    <button class="btn haggle-stop-btn">Stop!</button>
+  `,
+    () => finish(0.75, 'They lost patience and walked off with a discount.'),
+  );
+
+  const marker = modalLayer.querySelector('#haggle-marker') as HTMLDivElement;
+
+  function tick() {
+    const pct = currentPct();
+    marker.style.left = `${pct}%`;
+    if (performance.now() - startedAt >= HAGGLE_TIMEOUT_MS) {
+      finish(0.75, 'They lost patience and walked off with a discount.');
+      return;
+    }
+    rafId = requestAnimationFrame(tick);
+  }
+  rafId = requestAnimationFrame(tick);
+
+  modalLayer.querySelector('.haggle-stop-btn')!.addEventListener('click', () => {
+    const { multiplier, label } = haggleResultFor(currentPct());
+    finish(multiplier, label);
+  });
 }
 
 // Matches the rarity-pill colors elsewhere in the UI, used here as a glow
@@ -724,9 +869,13 @@ function openDaySummaryModal(summary: DaySummary) {
     summary.packsArrived > 0
       ? `<br>&#127873; ${summary.packsArrived} pack${summary.packsArrived === 1 ? '' : 's'} arrived overnight — ready at the counter.`
       : '';
+  const upgradesLine =
+    summary.upgradesArrived > 0
+      ? `<br>&#128230; ${summary.upgradesArrived} upgrade${summary.upgradesArrived === 1 ? '' : 's'} installed overnight — courtesy of the Distributor.`
+      : '';
   renderModal(`
     <h2>Day ${summary.day} Complete!</h2>
-    <p class="modal-sub">${SEASON_SET_NAME[summary.season]} &middot; Earned <strong>${summary.goldEarned}g</strong> from ${summary.cardsSold} sale${summary.cardsSold === 1 ? '' : 's'}.${packsLine}</p>
+    <p class="modal-sub">${SEASON_SET_NAME[summary.season]} &middot; Earned <strong>${summary.goldEarned}g</strong> from ${summary.cardsSold} sale${summary.cardsSold === 1 ? '' : 's'}.${packsLine}${upgradesLine}</p>
     <button class="btn start-day-btn">Start Day ${summary.day + 1}</button>
   `);
   modalLayer.querySelector('.start-day-btn')!.addEventListener('click', closeModal);
@@ -1553,7 +1702,7 @@ export function initUI() {
   document.addEventListener('keydown', (e) => {
     if (e.key !== 'Escape') return;
     e.preventDefault();
-    if (modalLayer.innerHTML) closeModal();
+    if (modalLayer.innerHTML) activeCloseHandler();
     else openMenuModal();
   });
   bus.on('open-menu', () => {
@@ -1577,18 +1726,17 @@ export function initUI() {
       const pack = PACKS.find((p) => p.id === btn.dataset.pack);
       if (pack) btn.disabled = gold < effectivePackCost(pack);
     });
-    modalLayer.querySelectorAll<HTMLButtonElement>('.rush-pack-btn').forEach((btn) => {
-      const pack = PACKS.find((p) => p.id === btn.dataset.pack);
-      if (pack) btn.disabled = gold < rushCost(pack);
-    });
     const tonicBtn = modalLayer.querySelector<HTMLButtonElement>('.buy-tonic-btn');
     if (tonicBtn) tonicBtn.disabled = gold < ENERGY_TONIC_COST || gameState.energy >= gameState.maxEnergy;
     modalLayer.querySelectorAll<HTMLButtonElement>('.buy-upgrade-btn').forEach((btn) => {
       const def =
-        SHOP_UPGRADE_DEFS.find((d) => d.key === btn.dataset.key) ??
         TOWN_UPGRADE_DEFS.find((d) => d.key === btn.dataset.key) ??
         COMBAT_UPGRADE_DEFS.find((d) => d.key === btn.dataset.key) ??
         MOVEMENT_UPGRADE_DEFS.find((d) => d.key === btn.dataset.key);
+      if (def) btn.disabled = gold < def.cost;
+    });
+    modalLayer.querySelectorAll<HTMLButtonElement>('.order-upgrade-btn').forEach((btn) => {
+      const def = SHOP_UPGRADE_DEFS.find((d) => d.key === btn.dataset.key);
       if (def) btn.disabled = gold < def.cost;
     });
     modalLayer.querySelectorAll<HTMLButtonElement>('.unlock-zone-btn').forEach((btn) => {
@@ -1639,6 +1787,8 @@ export function initUI() {
     }, 2600);
   });
   bus.on('open-counter', openCounterModal);
+  bus.on('open-distributor', openDistributorModal);
+  bus.on('open-haggle', (ticketId: number) => openHaggleModal(ticketId));
   bus.on('open-shelf', (shelfId: string) => openShelfModal(shelfId));
   bus.on('day-summary', (summary: DaySummary) => openDaySummaryModal(summary));
   bus.on('open-townhall', openTownHallModal);

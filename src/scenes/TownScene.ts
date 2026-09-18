@@ -10,6 +10,8 @@ import {
   TOWN_TO_WILDS_TRIGGER,
   TOWN_FROM_WILDS_POS,
   MERCHANT_CART_POS,
+  TOWN_DISTRIBUTOR_TRIGGER,
+  TOWN_DISTRIBUTOR_DOOR_POS,
 } from '../game/layout';
 import type { Season } from '../game/types';
 import { humanoidTextureKey, playerTextureKey, attachCircleBody } from '../game/pixelArt';
@@ -49,7 +51,7 @@ export default class TownScene extends Phaser.Scene {
     super('Town');
   }
 
-  create(data?: { from?: 'shop' | 'wilds' }) {
+  create(data?: { from?: 'shop' | 'wilds' | 'distributor' }) {
     this.cameras.main.setBackgroundColor('#2b2118');
     this.npcVisuals = [];
     this.stepTimer = 0;
@@ -68,6 +70,25 @@ export default class TownScene extends Phaser.Scene {
     this.add.rectangle(28, TOWN_TO_WILDS_TRIGGER.y, 10, 110, 0x4a3728).setDepth(1);
     this.add
       .text(52, TOWN_TO_WILDS_TRIGGER.y, 'WILDS\n◄', { fontSize: '11px', color: '#fff8ec', align: 'center' })
+      .setOrigin(0.5)
+      .setDepth(1);
+
+    // Distributor's exterior door — on the top wall like the Shop's, but
+    // well off to the right, clear of Town Hall's roof. An always-lit OPEN
+    // sign hangs over it.
+    this.add.rectangle(TOWN_DISTRIBUTOR_TRIGGER.x, 32, 110, 10, 0x4a3728).setDepth(1);
+    this.add
+      .text(TOWN_DISTRIBUTOR_TRIGGER.x, 48, 'DISTRIBUTOR ▲', { fontSize: '11px', color: '#fff8ec' })
+      .setOrigin(0.5)
+      .setDepth(1);
+    this.add
+      .text(TOWN_DISTRIBUTOR_TRIGGER.x, 66, 'OPEN', {
+        fontSize: '11px',
+        color: '#1b4332',
+        backgroundColor: '#7ee787',
+        padding: { x: 6, y: 2 },
+        fontStyle: 'bold',
+      })
       .setOrigin(0.5)
       .setDepth(1);
 
@@ -110,7 +131,8 @@ export default class TownScene extends Phaser.Scene {
     }
 
     // Player — arrives at the door leading back from wherever they came from.
-    const spawnPos = data?.from === 'wilds' ? TOWN_FROM_WILDS_POS : TOWN_SHOP_DOOR_POS;
+    const spawnPos =
+      data?.from === 'wilds' ? TOWN_FROM_WILDS_POS : data?.from === 'distributor' ? TOWN_DISTRIBUTOR_DOOR_POS : TOWN_SHOP_DOOR_POS;
     const playerTexture = playerTextureKey(this, gameState.equippedOutfitColor, 32);
     this.player = this.add.sprite(spawnPos.x, spawnPos.y, playerTexture).setDepth(5);
     this.physics.add.existing(this.player);
@@ -198,6 +220,7 @@ export default class TownScene extends Phaser.Scene {
       this.tickFootsteps(moving, delta);
       this.handleInteract();
       this.handleDoorTrigger();
+      this.handleDistributorTrigger();
       gameState.tickEnergy(delta);
       gameState.tickShopAutomation(delta);
       this.updateNpcPositions();
@@ -238,6 +261,13 @@ export default class TownScene extends Phaser.Scene {
     const d = Phaser.Math.Distance.Between(this.player.x, this.player.y, TOWN_SHOP_DOOR_TRIGGER.x, TOWN_SHOP_DOOR_TRIGGER.y);
     if (d < 40) {
       this.scene.start('Shop');
+    }
+  }
+
+  private handleDistributorTrigger() {
+    const d = Phaser.Math.Distance.Between(this.player.x, this.player.y, TOWN_DISTRIBUTOR_TRIGGER.x, TOWN_DISTRIBUTOR_TRIGGER.y);
+    if (d < 40) {
+      this.scene.start('Distributor');
     }
   }
 

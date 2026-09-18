@@ -109,6 +109,7 @@ export interface DaySummary {
   goldEarned: number;
   cardsSold: number;
   packsArrived: number;
+  upgradesArrived: number;
 }
 
 function defaultShopUpgrades(): ShopUpgrades {
@@ -244,6 +245,10 @@ class GameState {
    * instant open, so there's a reason to go do something else with today's
    * energy instead of just cycling packs at the counter. */
   pendingPacks: string[] = [];
+
+  /** Shop upgrades ordered at the Distributor today — installed overnight
+   * like a pack order, never the instant you pay. */
+  pendingShopUpgrades: (keyof ShopUpgrades)[] = [];
 
   /** Always includes 'bramble', the free starting zone. */
   unlockedZones: string[] = ['bramble'];
@@ -474,14 +479,37 @@ class GameState {
   sellFromShelf(shelfId: string): number {
     const shelf = this.shelves.find((s) => s.id === shelfId);
     if (!shelf || !shelf.card) return 0;
-    const earned = Math.round(shelf.price * this.saleGoldMultiplier);
+    const price = shelf.price;
     shelf.card = null;
     shelf.price = 0;
+    const earned = this.completeReservedSale(price, 1);
+    bus.emit('shelves-changed', this.shelves);
+    return earned;
+  }
+
+  /** Pulls a card off a shelf without paying for it yet — a customer at the
+   * register has committed to buying it, so it comes off display right away
+   * and can't be double-sold to someone else while they wait in line. Money
+   * only changes hands once the register actually rings them up. */
+  reserveShelfForSale(shelfId: string): { card: Card; price: number } | null {
+    const shelf = this.shelves.find((s) => s.id === shelfId);
+    if (!shelf || !shelf.card) return null;
+    const result = { card: shelf.card, price: shelf.price };
+    shelf.card = null;
+    shelf.price = 0;
+    bus.emit('shelves-changed', this.shelves);
+    return result;
+  }
+
+  /** Completes a sale at the register — either a plain shelf sale (paid in
+   * full, priceMultiplier 1) or a reserved one settled after haggling, where
+   * priceMultiplier reflects how the minigame went. */
+  completeReservedSale(price: number, priceMultiplier: number): number {
+    const earned = Math.round(price * this.saleGoldMultiplier * priceMultiplier);
     this.addGold(earned);
     this.goldEarnedToday += earned;
     this.cardsSoldToday += 1;
     this.lifetimeCardsSold += 1;
-    bus.emit('shelves-changed', this.shelves);
     bus.emit('board-progress-changed');
     return earned;
   }
@@ -518,11 +546,14 @@ class GameState {
     this.placeOnShelf(shelfId, card.id, card.baseValue);
   }
 
-  purchaseShopUpgrade(key: keyof ShopUpgrades, cost: number): boolean {
-    if (this.shopUpgrades[key]) return false;
+  /** Ordering a shop upgrade at the Distributor places an overnight order —
+   * like a pack, it's installed at the start of the next day, never the
+   * instant you pay. */
+  orderShopUpgrade(key: keyof ShopUpgrades, cost: number): boolean {
+    if (this.shopUpgrades[key] || this.pendingShopUpgrades.includes(key)) return false;
     if (!this.spendGold(cost)) return false;
-    this.shopUpgrades[key] = true;
-    bus.emit('shop-upgrades-changed', this.shopUpgrades);
+    this.pendingShopUpgrades.push(key);
+    bus.emit('shop-upgrades-pending-changed', this.pendingShopUpgrades);
     return true;
   }
 
@@ -749,6 +780,7 @@ class GameState {
     this.npcs = defaultNpcStates();
     this.ownedPacks = [];
     this.pendingPacks = [];
+    this.pendingShopUpgrades = [];
     this.unlockedZones = ['bramble'];
     this.currentZoneId = 'bramble';
     this.goldEarnedToday = 0;
@@ -830,14 +862,6 @@ class GameState {
     return true;
   }
 
-  /** Pay a premium to skip the overnight wait and get the pack right now. */
-  buyPackRush(packId: string, cost: number): boolean {
-    if (!this.spendGold(cost)) return false;
-    this.ownedPacks.push(packId);
-    bus.emit('packs-changed', this.ownedPacks);
-    return true;
-  }
-
   restoreEnergy(amount: number) {
     this.energy = Math.min(this.maxEnergy, this.energy + amount);
     bus.emit('energy-changed', this.energy);
@@ -910,6 +934,7 @@ class GameState {
       goldEarned: this.goldEarnedToday,
       cardsSold: this.cardsSoldToday,
       packsArrived: this.pendingPacks.length,
+      upgradesArrived: this.pendingShopUpgrades.length,
     };
     this.day += 1;
     this.goldEarnedToday = 0;
@@ -924,6 +949,11 @@ class GameState {
       this.ownedPacks.push(...this.pendingPacks);
       this.pendingPacks = [];
       bus.emit('packs-changed', this.ownedPacks);
+    }
+    if (this.pendingShopUpgrades.length > 0) {
+      for (const key of this.pendingShopUpgrades) this.shopUpgrades[key] = true;
+      this.pendingShopUpgrades = [];
+      bus.emit('shop-upgrades-changed', this.shopUpgrades);
     }
     this.townBoard = rollTownBoard(this.townUpgrades.fountainRepaired);
     this.merchantVisit = Math.random() < MERCHANT_VISIT_CHANCE ? { day: this.day, offers: rollMerchantOffers() } : null;

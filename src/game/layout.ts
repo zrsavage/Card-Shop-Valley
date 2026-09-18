@@ -1,10 +1,20 @@
 // --- Shop interior ---
 export const COUNTER_POS = { x: 400, y: 110 };
+// Where waiting-to-pay customers line up, just in front of the counter —
+// each queue slot stacks further down by REGISTER_QUEUE_SPACING.
+export const REGISTER_QUEUE_POS = { x: 400, y: 168 };
+export const REGISTER_QUEUE_SPACING = 26;
 // Where the player appears after walking in from town — kept well clear of
 // SHOP_DOOR_TRIGGER's radius so arriving here can't immediately re-trigger
 // the transition back out.
 export const SHOP_ENTRANCE_POS = { x: 400, y: 490 };
 export const SHOP_DOOR_TRIGGER = { x: 400, y: 585, w: 100, h: 24 };
+
+// --- Distributor interior (order packs/upgrades/provisions here — never
+// available same-day, and never at the player's own shop counter) ---
+export const DISTRIBUTOR_COUNTER_POS = { x: 400, y: 110 };
+export const DISTRIBUTOR_ENTRANCE_POS = { x: 400, y: 490 };
+export const DISTRIBUTOR_DOOR_TRIGGER = { x: 400, y: 585, w: 100, h: 24 };
 
 export interface ShelfPosition {
   x: number;
@@ -37,6 +47,12 @@ export const TOWN_SHOP_DOOR_POS = { x: 400, y: 150 };
 export const TOWN_HALL_POS = { x: 660, y: 200 };
 export const FOUNTAIN_POS = { x: 400, y: 300 };
 export const FOUNTAIN_RADIUS = 42;
+
+// Distributor's exterior door — on the top wall like the Shop's, but well
+// off to the right, clear of Town Hall's footprint. Up and to the right of
+// the fountain, so walking out of it means heading down to reach it.
+export const TOWN_DISTRIBUTOR_TRIGGER = { x: 750, y: 60 };
+export const TOWN_DISTRIBUTOR_DOOR_POS = { x: 750, y: 150 };
 
 // Only occupied (and only interactable) on the days the traveling merchant
 // is actually in town.
