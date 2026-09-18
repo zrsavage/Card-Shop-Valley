@@ -61,6 +61,10 @@ export interface CombatUpgrades {
   /** Unlocks the alternate ranged attack (General Store) — a slow, heavy-
    * hitting thrown/fired option alongside the default melee swing. */
   rangedWeaponUnlocked: boolean;
+  /** Ranged upgrades: more damage AND a shorter wind-up per tier — the
+   * weapon hits harder and gets less punishing to use as you invest in it. */
+  rangedTier1: boolean;
+  rangedTier2: boolean;
 }
 
 export interface MovementUpgrades {

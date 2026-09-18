@@ -5,9 +5,7 @@ import {
   WILDS_EXTRA_ENERGY_DRAIN_PER_SEC,
   EXHAUSTED_SPEED_MULTIPLIER,
   EXHAUSTED_DAMAGE_TAKEN_MULTIPLIER,
-  RANGED_WINDUP_MS,
   RANGED_COOLDOWN_MS,
-  RANGED_DAMAGE_MULTIPLIER,
   RANGED_PROJECTILE_SPEED,
   RANGED_MAX_TRAVEL,
 } from '../game/state';
@@ -316,12 +314,13 @@ export default class WildsScene extends Phaser.Scene {
     if (this.rangedCooldownRemaining > 0) return;
     if (!Phaser.Input.Keyboard.JustDown(this.rangedKey)) return;
 
-    this.rangedWindupRemaining = RANGED_WINDUP_MS;
-    this.rangedCooldownRemaining = RANGED_WINDUP_MS + RANGED_COOLDOWN_MS;
+    const windupMs = gameState.rangedWindupMs;
+    this.rangedWindupRemaining = windupMs;
+    this.rangedCooldownRemaining = windupMs + RANGED_COOLDOWN_MS;
 
     const charge = this.add.circle(this.player.x, this.player.y, 4, 0xffd166, 0.55).setDepth(6).setStrokeStyle(2, 0xff8500);
-    this.tweens.add({ targets: charge, radius: 22, alpha: 0, duration: RANGED_WINDUP_MS, onComplete: () => charge.destroy() });
-    showFloatingText(this, this.player.x, this.player.y - 30, 'Aiming...', '#ffd166', RANGED_WINDUP_MS);
+    this.tweens.add({ targets: charge, radius: 22, alpha: 0, duration: windupMs, onComplete: () => charge.destroy() });
+    showFloatingText(this, this.player.x, this.player.y - 30, 'Aiming...', '#ffd166', windupMs);
   }
 
   private fireProjectile() {
@@ -329,7 +328,7 @@ export default class WildsScene extends Phaser.Scene {
     const vy = Math.sin(this.facingAngle) * RANGED_PROJECTILE_SPEED;
     const sprite = this.add.circle(this.player.x, this.player.y, 6, 0xffd166).setStrokeStyle(2, 0x2b1d0e).setDepth(6);
     const geared = gameState.attackDamage >= this.zone.recommendedAttack;
-    const damage = Math.round(gameState.attackDamage * RANGED_DAMAGE_MULTIPLIER);
+    const damage = Math.round(gameState.attackDamage * gameState.rangedDamageMultiplier);
     this.projectiles.push({ sprite, vx, vy, traveled: 0, damage, geared });
     playHit();
   }

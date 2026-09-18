@@ -1,4 +1,22 @@
-import { gameState, bus, WEAPON_TIER_DAMAGE_BONUS, VITALITY_TIER_HP_BONUS, SPEED_TIER_BONUS, MELEE_RANGE_TIER_BONUS, ATTACK_ARC_TIER_BONUS, SEASONS, ENERGY_TONIC_COST, ENERGY_TONIC_RESTORE, FIRST_AID_KIT_COST, FIRST_AID_KIT_HEAL, PLAYER_BASE_ATTACK_DAMAGE, PLAYER_BASE_MAX_HP, type DaySummary } from '../game/state';
+import {
+  gameState,
+  bus,
+  WEAPON_TIER_DAMAGE_BONUS,
+  VITALITY_TIER_HP_BONUS,
+  SPEED_TIER_BONUS,
+  MELEE_RANGE_TIER_BONUS,
+  ATTACK_ARC_TIER_BONUS,
+  SEASONS,
+  ENERGY_TONIC_COST,
+  ENERGY_TONIC_RESTORE,
+  FIRST_AID_KIT_COST,
+  FIRST_AID_KIT_HEAL,
+  RANGED_TIER_DAMAGE_BONUS,
+  RANGED_TIER_WINDUP_REDUCTION_MS,
+  PLAYER_BASE_ATTACK_DAMAGE,
+  PLAYER_BASE_MAX_HP,
+  type DaySummary,
+} from '../game/state';
 import { PACKS, openPack, type PackDefinition } from '../game/packs';
 import { RARITIES, RARITY_LABELS, RARITY_BASE_VALUE, SEASON_PRICE_MULTIPLIER } from '../game/cards';
 import { NPCS, friendshipTier, FRIENDSHIP_TIER_LABELS } from '../game/npcs';
@@ -501,6 +519,39 @@ function openDistributorModal() {
 
 const RANGED_WEAPON_COST = 900;
 
+interface RangedUpgradeDef {
+  key: 'rangedTier1' | 'rangedTier2';
+  name: string;
+  cost: number;
+  description: string;
+  requiresKey: keyof CombatUpgrades;
+}
+
+const RANGED_UPGRADE_DEFS: RangedUpgradeDef[] = [
+  {
+    key: 'rangedTier1',
+    name: 'Reinforced Bolts',
+    cost: 1100,
+    description: `+${RANGED_TIER_DAMAGE_BONUS.toFixed(1)}x damage multiplier, -${RANGED_TIER_WINDUP_REDUCTION_MS}ms wind-up.`,
+    requiresKey: 'rangedWeaponUnlocked',
+  },
+  {
+    key: 'rangedTier2',
+    name: 'Masterwork Bolts',
+    cost: 2200,
+    description: `+${RANGED_TIER_DAMAGE_BONUS.toFixed(1)}x more damage, -${RANGED_TIER_WINDUP_REDUCTION_MS}ms more wind-up.`,
+    requiresKey: 'rangedTier1',
+  },
+];
+
+function rangedUpgradeRowsHtml(): string {
+  return RANGED_UPGRADE_DEFS.map((def) => {
+    const owned = gameState.combatUpgrades[def.key];
+    const locked = !gameState.combatUpgrades[def.requiresKey];
+    return upgradeRowHtml(def.key, def.name, def.cost, def.description, owned, locked);
+  }).join('');
+}
+
 function generalStoreProvisionsHtml(): string {
   const energyFull = gameState.energy >= gameState.maxEnergy;
   const canAffordDrink = gameState.gold >= ENERGY_TONIC_COST;
@@ -552,10 +603,18 @@ function openGeneralStoreModal() {
     <h2 class="modal-section-title">Provisions</h2>
     <div class="pack-list">${generalStoreProvisionsHtml()}</div>
     <h2 class="modal-section-title">Weapons</h2>
-    <div class="pack-list">${rangedWeaponRowHtml()}</div>
+    <div class="pack-list">${rangedWeaponRowHtml()}${rangedUpgradeRowsHtml()}</div>
     <button class="btn btn-secondary close-btn">Close</button>
   `);
 
+  modalLayer.querySelectorAll<HTMLButtonElement>('.buy-upgrade-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const def = RANGED_UPGRADE_DEFS.find((d) => d.key === btn.dataset.key)!;
+      if (!gameState.purchaseCombatUpgrade(def.key, def.cost)) return;
+      playChime();
+      openGeneralStoreModal();
+    });
+  });
   modalLayer.querySelector('.buy-firstaid-btn')?.addEventListener('click', () => {
     if (!gameState.useFirstAidKit(FIRST_AID_KIT_COST, FIRST_AID_KIT_HEAL)) return;
     playChime();
@@ -1820,7 +1879,8 @@ export function initUI() {
       const def =
         TOWN_UPGRADE_DEFS.find((d) => d.key === btn.dataset.key) ??
         COMBAT_UPGRADE_DEFS.find((d) => d.key === btn.dataset.key) ??
-        MOVEMENT_UPGRADE_DEFS.find((d) => d.key === btn.dataset.key);
+        MOVEMENT_UPGRADE_DEFS.find((d) => d.key === btn.dataset.key) ??
+        RANGED_UPGRADE_DEFS.find((d) => d.key === btn.dataset.key);
       if (def) btn.disabled = gold < def.cost;
     });
     modalLayer.querySelectorAll<HTMLButtonElement>('.order-upgrade-btn').forEach((btn) => {

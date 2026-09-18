@@ -75,6 +75,11 @@ export const RANGED_COOLDOWN_MS = 1900;
 export const RANGED_DAMAGE_MULTIPLIER = 2.4;
 export const RANGED_PROJECTILE_SPEED = 480;
 export const RANGED_MAX_TRAVEL = 460;
+// Each ranged tier adds both a damage bump and a shorter wind-up, rather
+// than splitting them into separate upgrade lines — they're two dials on
+// the same weapon, and a single tier line is a lot less UI to shop through.
+export const RANGED_TIER_DAMAGE_BONUS = 0.4;
+export const RANGED_TIER_WINDUP_REDUCTION_MS = 120;
 
 // Shop reputation — derived from lifetime sales, not stored directly, so it
 // only ever grows and can't be gamed by a save/reload. Higher tiers unlock
@@ -158,6 +163,8 @@ function defaultCombatUpgrades(): CombatUpgrades {
     attackRangeTier1: false,
     attackRangeTier2: false,
     rangedWeaponUnlocked: false,
+    rangedTier1: false,
+    rangedTier2: false,
   };
 }
 
@@ -311,6 +318,18 @@ class GameState {
 
   get attackArcDegrees(): number {
     return PLAYER_BASE_ATTACK_ARC_DEGREES + this.attackRangeTiers * ATTACK_ARC_TIER_BONUS;
+  }
+
+  private get rangedTiers(): number {
+    return [this.combatUpgrades.rangedTier1, this.combatUpgrades.rangedTier2].filter(Boolean).length;
+  }
+
+  get rangedDamageMultiplier(): number {
+    return RANGED_DAMAGE_MULTIPLIER + this.rangedTiers * RANGED_TIER_DAMAGE_BONUS;
+  }
+
+  get rangedWindupMs(): number {
+    return Math.max(250, RANGED_WINDUP_MS - this.rangedTiers * RANGED_TIER_WINDUP_REDUCTION_MS);
   }
 
   get maxEnergy(): number {

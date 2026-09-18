@@ -61,6 +61,15 @@ export default class TownScene extends Phaser.Scene {
     const grassKey = grassTextureKey(this, GROUND_TINTS[gameState.season]);
     this.ground = this.add.tileSprite(400, 300, 760, 560, grassKey).setDepth(0);
 
+    // Worn dirt paths radiating out from the fountain to each of the four
+    // destinations — so it's obvious at a glance that there's somewhere to
+    // go in every direction, not just a wall of grass with a small label
+    // way off at the edge.
+    this.drawPathTo(TOWN_SHOP_DOOR_TRIGGER.x, TOWN_SHOP_DOOR_TRIGGER.y);
+    this.drawPathTo(TOWN_TO_WILDS_TRIGGER.x, TOWN_TO_WILDS_TRIGGER.y);
+    this.drawPathTo(TOWN_DISTRIBUTOR_TRIGGER.x, TOWN_DISTRIBUTOR_TRIGGER.y);
+    this.drawPathTo(TOWN_GENERAL_STORE_TRIGGER.x, TOWN_GENERAL_STORE_TRIGGER.y);
+
     // Shop door (top wall)
     this.add.rectangle(TOWN_SHOP_DOOR_TRIGGER.x, 32, 110, 10, 0x4a3728).setDepth(1);
     this.add
@@ -193,6 +202,22 @@ export default class TownScene extends Phaser.Scene {
 
   private onCosmeticsChanged() {
     this.player.setTexture(playerTextureKey(this, gameState.equippedOutfitColor, 32));
+  }
+
+  /** A straight dirt-path strip from the fountain out to a destination
+   * door — drawn under the door markers/buildings (which are depth 1+)
+   * but over the plain grass, so it reads as an actual road rather than a
+   * decoration floating on top of everything. */
+  private drawPathTo(toX: number, toY: number) {
+    const fromX = FOUNTAIN_POS.x;
+    const fromY = FOUNTAIN_POS.y;
+    const dist = Phaser.Math.Distance.Between(fromX, fromY, toX, toY);
+    const angle = Phaser.Math.Angle.Between(fromX, fromY, toX, toY);
+    const path = this.add
+      .rectangle((fromX + toX) / 2, (fromY + toY) / 2, dist, 30, 0xc9a876)
+      .setDepth(0)
+      .setStrokeStyle(2, 0x9c7c4f, 0.6);
+    path.setRotation(angle);
   }
 
   private updateMerchantVisibility() {
