@@ -1719,11 +1719,26 @@ function wireDayTab() {
   modalLayer.querySelector('.end-day-btn')!.addEventListener('click', () => {
     gameState.endDay();
   });
-  modalLayer.querySelector('.reset-save-btn')!.addEventListener('click', () => {
-    if (window.confirm('Erase all progress and start over from Day 1? This cannot be undone.')) {
-      resetSave();
-    }
-  });
+  modalLayer.querySelector('.reset-save-btn')!.addEventListener('click', confirmResetSave);
+}
+
+/** window.confirm() doesn't reliably show inside a sandboxed embed (the
+ * Artifact preview, for one) — so this uses the same in-modal confirmation
+ * pattern as the Wilds' under-geared entry check instead of a native dialog. */
+function confirmResetSave() {
+  renderModal(
+    `
+    <h2>Reset Save?</h2>
+    <p class="modal-sub">This erases everything — gold, cards, upgrades, friendships — and starts over from Day 1. This cannot be undone.</p>
+    <div class="modal-actions">
+      <button class="btn btn-secondary confirm-reset-btn">Reset Save</button>
+      <button class="btn close-btn">Cancel</button>
+    </div>
+  `,
+    () => openMenuModal('day'),
+  );
+  modalLayer.querySelector('.confirm-reset-btn')!.addEventListener('click', resetSave);
+  modalLayer.querySelector('.close-btn')!.addEventListener('click', () => openMenuModal('day'));
 }
 
 // --- Perk tree (permanent, gold-bought passive bonuses — survives Prestige) ---
