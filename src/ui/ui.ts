@@ -36,6 +36,7 @@ import { FISH_SPECIES, type FishDef } from '../game/fishing';
 import { PERKS, PERK_BRANCH_LABELS, type PerkBranch } from '../game/perks';
 import { checkoutQueue, completeCheckout, walkAwayFromCheckout } from '../game/Customer';
 import { showFloatingText } from '../game/fx';
+import { resetSave } from '../game/save';
 
 function effectivePackCost(pack: PackDefinition): number {
   return Math.round(pack.cost * SEASON_PRICE_MULTIPLIER[gameState.season]);
@@ -1708,12 +1709,20 @@ function dayTabHtml(): string {
     </p>
     <p class="modal-sub">Energy: ${Math.round(gameState.energy)}/${gameState.maxEnergy}. Ending the day fully restores it.${pendingLine}</p>
     <button class="btn end-day-btn">End Day</button>
+    <h2 class="modal-section-title">Danger Zone</h2>
+    <p class="modal-sub">Erase everything — gold, cards, upgrades, friendships — and start over from Day 1.</p>
+    <button class="btn btn-secondary reset-save-btn">Reset Save</button>
   `;
 }
 
 function wireDayTab() {
   modalLayer.querySelector('.end-day-btn')!.addEventListener('click', () => {
     gameState.endDay();
+  });
+  modalLayer.querySelector('.reset-save-btn')!.addEventListener('click', () => {
+    if (window.confirm('Erase all progress and start over from Day 1? This cannot be undone.')) {
+      resetSave();
+    }
   });
 }
 

@@ -145,6 +145,19 @@ export function loadGame(): boolean {
   }
 }
 
+/** Erases the save and reloads — the simplest way back to a truly fresh
+ * game, since it re-runs the same brand-new-game path main.ts already
+ * takes when there's no save to load, rather than trying to manually
+ * reset every field on the live singleton. */
+export function resetSave() {
+  try {
+    localStorage.removeItem(SAVE_KEY);
+  } catch {
+    // localStorage unavailable — nothing to clear, just reload.
+  }
+  window.location.reload();
+}
+
 export function hasSave(): boolean {
   try {
     return localStorage.getItem(SAVE_KEY) !== null;
