@@ -117,10 +117,12 @@ export default class WildsScene extends Phaser.Scene {
     const groundKey =
       this.zone.id === 'frostback' ? stoneGroundTextureKey(this, this.zone.groundColor) : grassTextureKey(this, this.zone.groundColor);
     this.add.tileSprite(400, 300, 760, 560, groundKey).setDepth(0);
-    for (let i = 0; i < 14; i++) {
+    // Sparser and more spread out than the town's clutter — the Wilds
+    // should read as empty, secluded ground, not another populated place.
+    for (let i = 0; i < 8; i++) {
       const x = Phaser.Math.Between(50, 750);
       const y = Phaser.Math.Between(50, 550);
-      this.add.circle(x, y, Phaser.Math.Between(10, 22), this.zone.decorationColor, 0.6).setDepth(0);
+      this.add.circle(x, y, Phaser.Math.Between(8, 18), this.zone.decorationColor, 0.6).setDepth(0);
     }
 
     const zoneLabel = this.zoneCleared ? `${this.zone.name} (cleared for today)` : this.zone.name;

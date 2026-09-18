@@ -147,6 +147,33 @@ export function drawTownHall(scene: Phaser.Scene, x: number, y: number, w: numbe
   return objs;
 }
 
+/** A small, purely decorative house — the "town" reads as a real place
+ * with more than four buildings in it, not just the ones you can walk
+ * into. No door/interact prompt; just a wall, a roof, a window, and a
+ * collision box so it reads as solid rather than a painted backdrop. */
+export function drawBackgroundHouse(scene: Phaser.Scene, x: number, y: number, w: number, h: number, wallColor: number, roofColor: number): Phaser.GameObjects.GameObject[] {
+  const objs: Phaser.GameObjects.GameObject[] = [];
+  const brickKey = brickTextureKey(scene, wallColor);
+  const wall = scene.add.tileSprite(x, y, w, h, brickKey).setDepth(2);
+  objs.push(wall);
+
+  const roofHeight = w * 0.35;
+  const roofWidth = w + 12;
+  const roof = scene.add
+    .triangle(x, y - h / 2 - roofHeight / 2, 0, roofHeight, roofWidth, roofHeight, roofWidth / 2, 0, roofColor)
+    .setDepth(2)
+    .setStrokeStyle(2, 0x2b1d0e);
+  objs.push(roof);
+
+  const door = scene.add.rectangle(x, y + h / 2 - h * 0.22, w * 0.22, h * 0.34, 0x3e2723).setDepth(3).setStrokeStyle(2, 0x2b1d0e);
+  objs.push(door);
+
+  const win = scene.add.rectangle(x + w / 4, y - h * 0.1, w * 0.16, w * 0.16, 0xbfe6ff, 0.85).setDepth(3).setStrokeStyle(2, 0x2b1d0e);
+  objs.push(win);
+
+  return objs;
+}
+
 export interface FountainVisual {
   rim: Phaser.GameObjects.Arc;
   water: Phaser.GameObjects.Arc;
