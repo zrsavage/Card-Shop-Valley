@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { gameState, bus } from '../game/state';
 import { spawnCustomer, checkoutQueue, clearCheckoutQueue } from '../game/Customer';
-import { COUNTER_POS, SHOP_ENTRANCE_POS, SHOP_DOOR_TRIGGER, SHOP_SHELF_POSITIONS } from '../game/layout';
+import { COUNTER_POS, COUNTER_BEHIND_POS, SHOP_ENTRANCE_POS, SHOP_DOOR_TRIGGER, SHOP_SHELF_POSITIONS } from '../game/layout';
 import type { ShelfPosition } from '../game/layout';
 import { playerTextureKey, attachCircleBody } from '../game/pixelArt';
 import { woodTextureKey } from '../game/sceneryArt';
@@ -64,6 +64,15 @@ export default class ShopScene extends Phaser.Scene {
       .setOrigin(0.5)
       .setDepth(3);
     const counterBody = this.physics.add.staticBody(COUNTER_POS.x - 90, COUNTER_POS.y - 30, 180, 60);
+
+    // A small mat marking the staff-only side — the counter's solid body
+    // blocks a straight shot through it, so actually working the register
+    // means walking around one end to reach this spot.
+    this.add.rectangle(COUNTER_BEHIND_POS.x, COUNTER_BEHIND_POS.y, 70, 40, 0x4a3728, 0.5).setDepth(1).setStrokeStyle(1, 0x2b1d0e, 0.5);
+    this.add
+      .text(COUNTER_BEHIND_POS.x, COUNTER_BEHIND_POS.y, 'STAFF', { fontSize: '10px', color: '#d9a066' })
+      .setOrigin(0.5)
+      .setDepth(1);
 
     // Shelves — base six always present; upgrade-unlocked ones appear as they're purchased.
     const shelfBodies: Phaser.Physics.Arcade.StaticBody[] = [];
@@ -272,8 +281,12 @@ export default class ShopScene extends Phaser.Scene {
   }
 
   private nearestInteractable(): { type: 'counter' | 'shelf'; id?: string; x: number; y: number } | null {
+    // The register's interact point is the staff side behind the counter,
+    // not the counter's own (customer-facing) center — its solid body
+    // keeps the front of the counter out of that range, so ringing anyone
+    // up means actually walking around to the back.
     const candidates: { type: 'counter' | 'shelf'; id?: string; x: number; y: number }[] = [
-      { type: 'counter', x: COUNTER_POS.x, y: COUNTER_POS.y },
+      { type: 'counter', x: COUNTER_BEHIND_POS.x, y: COUNTER_BEHIND_POS.y },
       ...this.shelfVisuals.map((v) => ({ type: 'shelf' as const, id: v.id, x: v.x, y: v.y })),
     ];
     let best: { type: 'counter' | 'shelf'; id?: string; x: number; y: number } | null = null;

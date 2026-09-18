@@ -8,6 +8,7 @@ import GeneralStoreScene from './scenes/GeneralStoreScene';
 import { initUI, showIntroModal } from './ui/ui';
 import { loadGame, initAutosave } from './game/save';
 import { gameState, bus } from './game/state';
+import { checkoutQueue } from './game/Customer';
 
 const isBrandNewGame = !loadGame();
 initAutosave();
@@ -32,9 +33,14 @@ if (isBrandNewGame) showIntroModal();
 // Dev-only test hook — dead-code-eliminated from production builds since
 // import.meta.env.DEV is statically replaced with `false` by Vite.
 if (import.meta.env.DEV) {
-  (window as unknown as { __debug: { gameState: typeof gameState; bus: typeof bus; game: Phaser.Game } }).__debug = {
+  (
+    window as unknown as {
+      __debug: { gameState: typeof gameState; bus: typeof bus; game: Phaser.Game; checkoutQueue: typeof checkoutQueue };
+    }
+  ).__debug = {
     gameState,
     bus,
     game,
+    checkoutQueue,
   };
 }

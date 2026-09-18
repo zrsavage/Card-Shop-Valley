@@ -9,6 +9,20 @@ import type { Card } from './types';
 
 const CUSTOMER_DOOR_POS = { x: SHOP_DOOR_TRIGGER.x, y: 580 };
 
+/** How hard a given customer will haggle — rolled once per sale so two
+ * customers buying the same card can behave completely differently. */
+export interface HaggleProfile {
+  /** The deepest discount (%, off the shelf price) they actually need to
+   * say yes — offer them this much or more and the deal is done outright. */
+  ceilingDiscountPercent: number;
+  /** Their opening ask is deeper than that real ceiling, so there's room
+   * to talk them up over the course of the negotiation. */
+  openingDiscountPercent: number;
+  /** How many rejected counters they'll sit through before they've had
+   * enough and it's yes-or-no on their final offer. */
+  patience: number;
+}
+
 /** A customer who's decided to buy something waits here, in line, until the
  * player rings them up at the register and haggles over the price — they
  * don't just pay and walk off on their own. */
@@ -22,6 +36,7 @@ export interface CheckoutTicket {
    * necessarily what they end up paying. */
   price: number;
   archetype: 'normal' | 'bulkBuyer' | 'bigSpender';
+  haggle: HaggleProfile;
   /** Continues that customer's own visit flow (next shelf, or leaving).
    * A null finalPrice means the haggle fell through — no sale. */
   resolve: (finalPrice: number | null) => void;
@@ -135,6 +150,38 @@ function rollBudget(archetype: 'normal' | 'bulkBuyer' | 'bigSpender'): number {
   if (archetype === 'bigSpender') return Phaser.Math.Between(250, 600);
   if (archetype === 'bulkBuyer') return Phaser.Math.Between(150, 350);
   return Phaser.Math.Between(50, 180);
+}
+
+// Haggle limits by archetype — the ceiling is the real floor of what they'll
+// pay (offer them at least this much discount and it's a done deal), the
+// padding is how much deeper their opening lowball goes beyond that, and
+// patience is how many rejected counters they'll sit through before it's
+// their final offer, take it or leave it. Big spenders barely need talking
+// down; bulk buyers, buying more often, push the hardest and longest.
+const HAGGLE_CEILING_DISCOUNT: Record<'normal' | 'bulkBuyer' | 'bigSpender', [number, number]> = {
+  normal: [10, 25],
+  bulkBuyer: [15, 30],
+  bigSpender: [0, 12],
+};
+const HAGGLE_OPENING_PADDING: Record<'normal' | 'bulkBuyer' | 'bigSpender', [number, number]> = {
+  normal: [8, 18],
+  bulkBuyer: [10, 20],
+  bigSpender: [4, 10],
+};
+const HAGGLE_PATIENCE: Record<'normal' | 'bulkBuyer' | 'bigSpender', [number, number]> = {
+  normal: [2, 3],
+  bulkBuyer: [3, 4],
+  bigSpender: [1, 2],
+};
+
+function rollHaggleProfile(archetype: 'normal' | 'bulkBuyer' | 'bigSpender'): HaggleProfile {
+  const [ceilLo, ceilHi] = HAGGLE_CEILING_DISCOUNT[archetype];
+  const [padLo, padHi] = HAGGLE_OPENING_PADDING[archetype];
+  const [patLo, patHi] = HAGGLE_PATIENCE[archetype];
+  const ceilingDiscountPercent = Phaser.Math.Between(ceilLo, ceilHi);
+  const openingDiscountPercent = Math.min(80, ceilingDiscountPercent + Phaser.Math.Between(padLo, padHi));
+  const patience = Phaser.Math.Between(patLo, patHi);
+  return { ceilingDiscountPercent, openingDiscountPercent, patience };
 }
 
 // Below this, a customer with money left still calls it quits rather than
@@ -283,7 +330,7 @@ export function spawnCustomer(scene: Phaser.Scene, stockedShelves: ShelfTarget[]
     const targetX = REGISTER_QUEUE_POS.x;
     const targetY = REGISTER_QUEUE_POS.y + queueIdx * REGISTER_QUEUE_SPACING;
     tweenTo(scene, sprite, targetX, targetY, () => {
-      checkoutQueue.push({ id: nextTicketId++, scene, sprite, shelfId, card, price, archetype, resolve: onDone });
+      checkoutQueue.push({ id: nextTicketId++, scene, sprite, shelfId, card, price, archetype, haggle: rollHaggleProfile(archetype), resolve: onDone });
     });
   }
 

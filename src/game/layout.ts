@@ -1,8 +1,14 @@
 // --- Shop interior ---
-export const COUNTER_POS = { x: 400, y: 110 };
-// Where waiting-to-pay customers line up, just in front of the counter —
-// each queue slot stacks further down by REGISTER_QUEUE_SPACING.
-export const REGISTER_QUEUE_POS = { x: 400, y: 168 };
+// Freestanding in the middle of the floor, not flush against the back
+// wall — its physics body blocks a straight shot through it, so reaching
+// the staff side actually means walking around one end of it.
+export const COUNTER_POS = { x: 400, y: 220 };
+// The staff-only side, between the counter and the back wall — this is
+// where the player has to stand to ring anyone up.
+export const COUNTER_BEHIND_POS = { x: 400, y: 165 };
+// Where waiting-to-pay customers line up, on the open floor in front of
+// the counter — each queue slot stacks further down by REGISTER_QUEUE_SPACING.
+export const REGISTER_QUEUE_POS = { x: 400, y: 280 };
 export const REGISTER_QUEUE_SPACING = 26;
 // Where the player appears after walking in from town — kept well clear of
 // SHOP_DOOR_TRIGGER's radius so arriving here can't immediately re-trigger

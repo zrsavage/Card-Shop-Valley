@@ -660,25 +660,24 @@ function openGeneralStoreModal() {
 
 // --- Haggling (the register) ---
 //
-// A customer at the register opens with a lowball offer, not the sticker
-// price — the player either takes it or pushes back for more, round by
-// round, with a real chance each push-back blows the sale entirely. Pricing
-// a shelf high is a bet that it's worth haggling down from, not a
-// guaranteed payout.
+// The full listed price is always on the table. A customer opens with "How
+// about Xg?" — a lowball, not the sticker price — and the player answers
+// with Yes (take their offer), No (decline outright, no sale), or a counter
+// of their own (a quick 5% off, or any custom % off they type in). Each
+// customer has their own real floor (the deepest discount that actually
+// gets a yes) and their own patience for how many rejected counters they'll
+// sit through before it's their final offer, take it or leave it — rolled
+// per-customer in Customer.ts, not a single fixed curve for everyone.
 
-const MAX_HAGGLE_ROUNDS = 3;
-
-const HAGGLE_INITIAL_RATIO: Record<'normal' | 'bulkBuyer' | 'bigSpender', [number, number]> = {
-  normal: [0.45, 0.6],
-  bulkBuyer: [0.5, 0.6],
-  bigSpender: [0.65, 0.8],
-};
-
-const HAGGLE_WALKAWAY_CHANCE: Record<'normal' | 'bulkBuyer' | 'bigSpender', number> = {
-  normal: 0.22,
-  bulkBuyer: 0.18,
-  bigSpender: 0.08,
-};
+const HAGGLE_QUICK_DISCOUNT_PERCENT = 5;
+const HAGGLE_DEFAULT_CUSTOM_PERCENT = 15;
+const HAGGLE_INSULT_BASE_CHANCE = 0.05;
+// Extra insult chance per percentage point a counter falls short of what
+// they actually needed — a wildly lowball counter risks blowing the sale
+// outright instead of just prompting another round.
+const HAGGLE_INSULT_PER_SHORTFALL_POINT = 0.03;
+const HAGGLE_CONCESSION_MIN = 0.3;
+const HAGGLE_CONCESSION_MAX = 0.5;
 
 const HAGGLE_PUSHBACK_LINES = [
   'They grumble, but come up a bit.',
@@ -686,6 +685,8 @@ const HAGGLE_PUSHBACK_LINES = [
   'They sigh and sweeten the offer.',
   "Alright, alright, here's more.",
 ];
+
+const HAGGLE_FINAL_LINES = ["That's as high as I'll go.", 'Final offer — take it or leave it.', 'Not a copper more than this.'];
 
 function pickOne<T>(arr: T[]): T {
   return arr[Math.floor(Math.random() * arr.length)];
@@ -698,10 +699,11 @@ function openHaggleModal(ticketId: number) {
   // narrowed type inside the nested function declarations below.
   const t = ticket;
 
-  const [minRatio, maxRatio] = HAGGLE_INITIAL_RATIO[t.archetype];
-  let offer = Math.max(1, Math.round(t.price * (minRatio + Math.random() * (maxRatio - minRatio))));
-  let round = 1;
+  let offerDiscountPercent = t.haggle.openingDiscountPercent;
+  let round = 0;
   let settled = false;
+
+  const offerPrice = () => Math.max(1, Math.round(t.price * (1 - offerDiscountPercent / 100)));
 
   const finish = (finalPrice: number | null) => {
     if (settled) return;
@@ -716,39 +718,78 @@ function openHaggleModal(ticketId: number) {
     closeModal();
   };
 
+  // A counter of `counterDiscountPercent`% off — either the quick 5% button
+  // or the player's own custom figure. Meeting or beating what this
+  // customer actually needed (their ceiling) closes the deal outright;
+  // falling short risks an outright insult, or just costs a round of
+  // patience as they grudgingly come up partway.
+  const attemptCounter = (counterDiscountPercent: number) => {
+    const clamped = Math.max(0, Math.min(95, Math.round(counterDiscountPercent)));
+    const counterPrice = Math.max(1, Math.round(t.price * (1 - clamped / 100)));
+    if (clamped >= t.haggle.ceilingDiscountPercent) {
+      finish(counterPrice);
+      return;
+    }
+    const shortfall = t.haggle.ceilingDiscountPercent - clamped;
+    const insultChance =
+      HAGGLE_INSULT_BASE_CHANCE + shortfall * HAGGLE_INSULT_PER_SHORTFALL_POINT + (gameState.isExhausted ? EXHAUSTED_HAGGLE_WALKAWAY_BONUS : 0);
+    round += 1;
+    if (Math.random() < insultChance) {
+      showFloatingText(t.scene, t.sprite.x, t.sprite.y - 20, `That's insulting.`, '#c92a2a');
+      finish(null);
+      return;
+    }
+    if (round >= t.haggle.patience) {
+      // Out of patience — one last concession, then it's yes-or-no only.
+      offerDiscountPercent = t.haggle.ceilingDiscountPercent;
+      render(pickOne(HAGGLE_FINAL_LINES));
+      return;
+    }
+    const gap = offerDiscountPercent - t.haggle.ceilingDiscountPercent;
+    offerDiscountPercent = Math.max(t.haggle.ceilingDiscountPercent, offerDiscountPercent - gap * (HAGGLE_CONCESSION_MIN + Math.random() * (HAGGLE_CONCESSION_MAX - HAGGLE_CONCESSION_MIN)));
+    render(pickOne(HAGGLE_PUSHBACK_LINES));
+  };
+
   const render = (feedback = '') => {
-    const atFinalRound = round > MAX_HAGGLE_ROUNDS;
-    const gap = t.price - offer;
-    const actionsHtml = atFinalRound
-      ? `<button class="btn haggle-accept-btn">Accept ${offer}g (final offer)</button>`
-      : gap <= 0
-        ? `<button class="btn haggle-accept-btn">Accept ${offer}g</button>`
-        : `<button class="btn haggle-accept-btn">Accept ${offer}g</button><button class="btn btn-secondary haggle-pushback-btn">Push Back</button>`;
+    const price = offerPrice();
+    const atFinalRound = round >= t.haggle.patience;
+    const quickCounterPrice = Math.max(1, Math.round(t.price * (1 - HAGGLE_QUICK_DISCOUNT_PERCENT / 100)));
+
+    const counterHtml = atFinalRound
+      ? ''
+      : `
+        <button class="btn btn-secondary haggle-counter5-btn">How about ${HAGGLE_QUICK_DISCOUNT_PERCENT}% off? (${quickCounterPrice}g)</button>
+        <div class="haggle-custom-counter">
+          <span>How about</span>
+          <input type="number" class="haggle-custom-pct" min="0" max="90" value="${HAGGLE_DEFAULT_CUSTOM_PERCENT}" />
+          <span>% off?</span>
+          <button class="btn btn-secondary haggle-counterx-btn">Ask</button>
+        </div>
+      `;
 
     renderModal(
       `
       <h2>Haggling</h2>
-      <p class="modal-sub">${t.card.name} — listed at ${t.price}g.</p>
-      <p class="modal-sub haggle-offer-line">Their offer: <strong>${offer}g</strong>${atFinalRound ? ' — take it or leave it.' : ''}</p>
+      <p class="modal-sub">${t.card.name} — full price <strong>${t.price}g</strong>.</p>
+      <p class="modal-sub haggle-offer-line">"How about <strong>${price}g</strong>?"${atFinalRound ? ' — final offer.' : ''}</p>
       ${feedback ? `<p class="modal-sub haggle-feedback">${feedback}</p>` : ''}
-      <div class="modal-actions">${actionsHtml}</div>
+      <div class="modal-actions haggle-actions">
+        <button class="btn haggle-yes-btn">Yes — ${price}g</button>
+        <button class="btn btn-secondary haggle-no-btn">No</button>
+        ${counterHtml}
+      </div>
       `,
       // Walking away from the modal itself (X or Escape) just takes
       // whatever's currently on the table — no punitive default beyond that.
-      () => finish(offer),
+      () => finish(price),
     );
 
-    modalLayer.querySelector('.haggle-accept-btn')!.addEventListener('click', () => finish(offer));
-    modalLayer.querySelector('.haggle-pushback-btn')?.addEventListener('click', () => {
-      round += 1;
-      const walkAwayChance = HAGGLE_WALKAWAY_CHANCE[t.archetype] + (gameState.isExhausted ? EXHAUSTED_HAGGLE_WALKAWAY_BONUS : 0);
-      if (Math.random() < walkAwayChance) {
-        showFloatingText(t.scene, t.sprite.x, t.sprite.y - 20, `That's insulting.`, '#c92a2a');
-        finish(null);
-        return;
-      }
-      offer = Math.min(t.price, offer + Math.round(gap * (0.4 + Math.random() * 0.2)));
-      render(pickOne(HAGGLE_PUSHBACK_LINES));
+    modalLayer.querySelector('.haggle-yes-btn')!.addEventListener('click', () => finish(price));
+    modalLayer.querySelector('.haggle-no-btn')!.addEventListener('click', () => finish(null));
+    modalLayer.querySelector('.haggle-counter5-btn')?.addEventListener('click', () => attemptCounter(HAGGLE_QUICK_DISCOUNT_PERCENT));
+    modalLayer.querySelector('.haggle-counterx-btn')?.addEventListener('click', () => {
+      const input = modalLayer.querySelector<HTMLInputElement>('.haggle-custom-pct')!;
+      attemptCounter(Number(input.value) || 0);
     });
   };
 
@@ -929,7 +970,7 @@ function openShelfModal(shelfId: string) {
     const baseValue = shelf.card.baseValue;
     bodyHtml = `
       <div class="reveal-grid">${cardSlotHtml(shelf.card)}</div>
-      <p class="modal-sub">Customers open with a lowball offer and haggle up from there — price it high expecting to get talked down some.</p>
+      <p class="modal-sub">Customers open low and haggle from there — some will come up a long way if you push, others barely budge. Price it high expecting a real back-and-forth.</p>
       <label class="field-label">Price
         <input type="number" id="reprice-input" min="1" value="${shelf.price}" />
       </label>
