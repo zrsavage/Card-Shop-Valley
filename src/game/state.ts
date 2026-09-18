@@ -167,6 +167,10 @@ function defaultRecurringFees(): RecurringFees {
     processingFeeWaived: false,
     mailInFeeWaived: false,
     taxFeeWaived: false,
+    respawnFeeWaived: false,
+    electricityWaived: false,
+    runningWaterWaived: false,
+    developerFeeWaived: false,
   };
 }
 

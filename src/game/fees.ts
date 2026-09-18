@@ -41,4 +41,32 @@ export const RECURRING_FEE_DEFS: RecurringFeeDef[] = [
     payoffCost: 300,
     description: 'Not to be confused with taxes. This is simply a fee, levied for tax-related reasons.',
   },
+  {
+    key: 'respawnFeeWaived',
+    name: 'Resurrection Insurance',
+    weeklyCost: 10,
+    payoffCost: 150,
+    description: "You've never actually died, not once. The town bills you for the coverage anyway, just in case.",
+  },
+  {
+    key: 'electricityWaived',
+    name: 'Electricity',
+    weeklyCost: 20,
+    payoffCost: 350,
+    description: 'Keeps the shop lights on. Somehow still flickers out mid-festival every single year.',
+  },
+  {
+    key: 'runningWaterWaived',
+    name: 'Running Water',
+    weeklyCost: 14,
+    payoffCost: 220,
+    description: "The fountain runs on a totally separate budget, apparently. This one's just for your sink.",
+  },
+  {
+    key: 'developerFeeWaived',
+    name: "Developer's Fee",
+    weeklyCost: 25,
+    payoffCost: 400,
+    description: 'Nobody in town can explain what this actually pays for. It shows up on the bill regardless.',
+  },
 ];

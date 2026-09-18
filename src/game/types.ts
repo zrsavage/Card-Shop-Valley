@@ -51,6 +51,10 @@ export interface RecurringFees {
   processingFeeWaived: boolean;
   mailInFeeWaived: boolean;
   taxFeeWaived: boolean;
+  respawnFeeWaived: boolean;
+  electricityWaived: boolean;
+  runningWaterWaived: boolean;
+  developerFeeWaived: boolean;
 }
 
 export interface CombatUpgrades {
