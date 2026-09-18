@@ -10,16 +10,21 @@ import type { Card } from './types';
 const CUSTOMER_DOOR_POS = { x: SHOP_DOOR_TRIGGER.x, y: 580 };
 
 /** A customer who's decided to buy something waits here, in line, until the
- * player rings them up at the register — they don't just pay and walk off
- * on their own. */
+ * player rings them up at the register and haggles over the price — they
+ * don't just pay and walk off on their own. */
 export interface CheckoutTicket {
   id: number;
   scene: Phaser.Scene;
   sprite: Phaser.GameObjects.Sprite;
+  shelfId: string;
   card: Card;
+  /** The shelf's listed price — the haggle's opening reference point, not
+   * necessarily what they end up paying. */
   price: number;
-  /** Continues that customer's own visit flow (next shelf, or leaving). */
-  resolve: () => void;
+  archetype: 'normal' | 'bulkBuyer' | 'bigSpender';
+  /** Continues that customer's own visit flow (next shelf, or leaving).
+   * A null finalPrice means the haggle fell through — no sale. */
+  resolve: (finalPrice: number | null) => void;
 }
 
 let nextTicketId = 1;
@@ -32,23 +37,45 @@ function repositionQueue() {
   });
 }
 
-/** Called by the shop's register UI once the haggle result is known —
- * settles the sale at the negotiated price and lets that customer continue
- * (or leave, if the register was their last stop). */
-export function completeCheckout(ticketId: number, priceMultiplier: number) {
+/** Called by the register's haggle UI once a price is actually agreed on —
+ * settles the sale at that price and lets the customer continue (or leave,
+ * if the register was their last stop). */
+export function completeCheckout(ticketId: number, finalPrice: number) {
   const idx = checkoutQueue.findIndex((t) => t.id === ticketId);
   if (idx < 0) return;
   const [ticket] = checkoutQueue.splice(idx, 1);
-  const earned = gameState.completeReservedSale(ticket.price, priceMultiplier);
+  const earned = gameState.completeReservedSale(finalPrice, 1);
   showFloatingText(ticket.scene, ticket.sprite.x, ticket.sprite.y - 42, `+${earned}g`, '#2b8a3e');
   playCoin();
   repositionQueue();
-  ticket.resolve();
+  ticket.resolve(finalPrice);
+}
+
+/** Called when the haggle falls through — the customer leaves empty-handed
+ * and the card goes back on the shelf (or the bag, if the shelf's since
+ * been restocked with something else) rather than being lost. */
+export function walkAwayFromCheckout(ticketId: number) {
+  const idx = checkoutQueue.findIndex((t) => t.id === ticketId);
+  if (idx < 0) return;
+  const [ticket] = checkoutQueue.splice(idx, 1);
+  if (!gameState.returnCardToShelf(ticket.shelfId, ticket.card, ticket.price)) {
+    gameState.addCardsToInventory([ticket.card]);
+  }
+  showFloatingText(ticket.scene, ticket.sprite.x, ticket.sprite.y - 42, `Deal fell through`, '#c92a2a');
+  repositionQueue();
+  ticket.resolve(null);
 }
 
 /** Called when the shop is left (day ends, or the scene itself is torn
- * down) — queued customers don't persist across a scene reload. */
+ * down) — queued customers don't persist across a scene reload. Anyone
+ * still waiting had their card reserved off a shelf, so it's restored
+ * (shelf, or the bag if that shelf's occupied) rather than just vanishing. */
 export function clearCheckoutQueue() {
+  for (const ticket of checkoutQueue) {
+    if (!gameState.returnCardToShelf(ticket.shelfId, ticket.card, ticket.price)) {
+      gameState.addCardsToInventory([ticket.card]);
+    }
+  }
   checkoutQueue.length = 0;
 }
 const CUSTOMER_COLORS = [0x4cc9f0, 0xf72585, 0x90be6d, 0xf9844a, 0x9b5de5, 0x577590];
@@ -230,10 +257,17 @@ export function spawnCustomer(scene: Phaser.Scene, stockedShelves: ShelfTarget[]
           scene.time.delayedCall(NEXT_SHELF_PAUSE_MS, () => visit(i + 1));
           return;
         }
-        budgetRemaining -= price;
-        boughtAnything = true;
         showSpeechText(scene, sprite.x, sprite.y - 20, pick(["I'll take it!", "Ringing this up.", "Ready to pay."]), '#2b8a3e');
-        goToRegister(reserved.card, reserved.price, () => visit(i + 1));
+        goToRegister(target.id, reserved.card, reserved.price, (finalPrice) => {
+          // Budget and the "thanks!" line are only earned on an actual
+          // completed sale — the haggle can still fall through at the
+          // register, in which case nothing here should have happened.
+          if (finalPrice != null) {
+            budgetRemaining -= finalPrice;
+            boughtAnything = true;
+          }
+          visit(i + 1);
+        });
         return;
       } else if (!canAfford) {
         showFloatingText(scene, sprite.x, sprite.y - 42, `Can't afford that`, '#c92a2a');
@@ -244,12 +278,12 @@ export function spawnCustomer(scene: Phaser.Scene, stockedShelves: ShelfTarget[]
 
   /** Walks to the back of the checkout line and waits — no timeout, the
    * player has to actually come ring them up (and haggle) to get paid. */
-  function goToRegister(card: Card, price: number, onDone: () => void) {
+  function goToRegister(shelfId: string, card: Card, price: number, onDone: (finalPrice: number | null) => void) {
     const queueIdx = checkoutQueue.length;
     const targetX = REGISTER_QUEUE_POS.x;
     const targetY = REGISTER_QUEUE_POS.y + queueIdx * REGISTER_QUEUE_SPACING;
     tweenTo(scene, sprite, targetX, targetY, () => {
-      checkoutQueue.push({ id: nextTicketId++, scene, sprite, card, price, resolve: onDone });
+      checkoutQueue.push({ id: nextTicketId++, scene, sprite, shelfId, card, price, archetype, resolve: onDone });
     });
   }
 

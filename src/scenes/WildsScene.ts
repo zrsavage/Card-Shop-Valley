@@ -3,7 +3,6 @@ import {
   gameState,
   bus,
   WILDS_EXTRA_ENERGY_DRAIN_PER_SEC,
-  EXHAUSTED_SPEED_MULTIPLIER,
   EXHAUSTED_DAMAGE_TAKEN_MULTIPLIER,
   RANGED_COOLDOWN_MS,
   RANGED_PROJECTILE_SPEED,
@@ -230,7 +229,9 @@ export default class WildsScene extends Phaser.Scene {
       vec.normalize();
       this.facingAngle = Math.atan2(vec.y, vec.x);
     }
-    const speed = gameState.isExhausted ? gameState.moveSpeed * EXHAUSTED_SPEED_MULTIPLIER : gameState.moveSpeed;
+    // Exhaustion's speed penalty now lives in the moveSpeed getter itself
+    // (applies in every scene, not just here) — don't double it up.
+    const speed = gameState.moveSpeed;
     body.setVelocity(vec.x * speed, vec.y * speed);
     return moving;
   }

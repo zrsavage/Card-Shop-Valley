@@ -13,6 +13,7 @@ import {
   FIRST_AID_KIT_HEAL,
   RANGED_TIER_DAMAGE_BONUS,
   RANGED_TIER_WINDUP_REDUCTION_MS,
+  EXHAUSTED_HAGGLE_WALKAWAY_BONUS,
   PLAYER_BASE_ATTACK_DAMAGE,
   PLAYER_BASE_MAX_HP,
   type DaySummary,
@@ -32,7 +33,8 @@ import { OUTFITS, type OutfitDef } from '../game/outfits';
 import { DECOR_ITEMS, type DecorDef } from '../game/decor';
 import { FISH_SPECIES, type FishDef } from '../game/fishing';
 import { PERKS, PERK_BRANCH_LABELS, type PerkBranch } from '../game/perks';
-import { checkoutQueue, completeCheckout } from '../game/Customer';
+import { checkoutQueue, completeCheckout, walkAwayFromCheckout } from '../game/Customer';
+import { showFloatingText } from '../game/fx';
 
 function effectivePackCost(pack: PackDefinition): number {
   return Math.round(pack.cost * SEASON_PRICE_MULTIPLIER[gameState.season]);
@@ -635,99 +637,99 @@ function openGeneralStoreModal() {
 
 // --- Haggling (the register) ---
 //
-// A customer at the register is trying to talk the price down — a quick
-// timing minigame decides how well that goes. A marker sweeps back and
-// forth across a track; where it's sitting when the player stops it sets
-// the final price, from a discount at the edges to a small bonus dead center.
+// A customer at the register opens with a lowball offer, not the sticker
+// price — the player either takes it or pushes back for more, round by
+// round, with a real chance each push-back blows the sale entirely. Pricing
+// a shelf high is a bet that it's worth haggling down from, not a
+// guaranteed payout.
 
-const HAGGLE_SWEEP_MS = 1300; // one edge-to-edge pass
-const HAGGLE_TIMEOUT_MS = 6000; // no response at all reads as a miss
+const MAX_HAGGLE_ROUNDS = 3;
 
-interface HaggleZone {
-  /** Upper bound of this zone, as a percent along the track (0-100). */
-  max: number;
-  multiplier: number;
-  label: string;
-}
+const HAGGLE_INITIAL_RATIO: Record<'normal' | 'bulkBuyer' | 'bigSpender', [number, number]> = {
+  normal: [0.45, 0.6],
+  bulkBuyer: [0.5, 0.6],
+  bigSpender: [0.65, 0.8],
+};
 
-const HAGGLE_ZONES: HaggleZone[] = [
-  { max: 17.5, multiplier: 0.75, label: 'They talked you down.' },
-  { max: 42.5, multiplier: 1, label: 'Sold at a fair price.' },
-  { max: 57.5, multiplier: 1.15, label: 'Great haggling! Sold above asking.' },
-  { max: 82.5, multiplier: 1, label: 'Sold at a fair price.' },
-  { max: 100.01, multiplier: 0.75, label: 'They talked you down.' },
+const HAGGLE_WALKAWAY_CHANCE: Record<'normal' | 'bulkBuyer' | 'bigSpender', number> = {
+  normal: 0.22,
+  bulkBuyer: 0.18,
+  bigSpender: 0.08,
+};
+
+const HAGGLE_PUSHBACK_LINES = [
+  'They grumble, but come up a bit.',
+  'Fine, fine — a little more.',
+  'They sigh and sweeten the offer.',
+  "Alright, alright, here's more.",
 ];
 
-function haggleResultFor(pct: number): { multiplier: number; label: string } {
-  return HAGGLE_ZONES.find((z) => pct <= z.max) ?? HAGGLE_ZONES[HAGGLE_ZONES.length - 1];
+function pickOne<T>(arr: T[]): T {
+  return arr[Math.floor(Math.random() * arr.length)];
 }
 
 function openHaggleModal(ticketId: number) {
   const ticket = checkoutQueue.find((t) => t.id === ticketId);
   if (!ticket) return;
+  // Aliased to a definitely-non-null const — `ticket` itself loses its
+  // narrowed type inside the nested function declarations below.
+  const t = ticket;
 
-  let resolved = false;
-  let rafId = 0;
-  const startedAt = performance.now();
+  const [minRatio, maxRatio] = HAGGLE_INITIAL_RATIO[t.archetype];
+  let offer = Math.max(1, Math.round(t.price * (minRatio + Math.random() * (maxRatio - minRatio))));
+  let round = 1;
+  let settled = false;
 
-  function currentPct(): number {
-    const elapsed = performance.now() - startedAt;
-    const phase = (elapsed % (HAGGLE_SWEEP_MS * 2)) / HAGGLE_SWEEP_MS;
-    return phase <= 1 ? phase * 100 : (2 - phase) * 100;
-  }
-
-  function finish(multiplier: number, label: string) {
-    if (resolved) return;
-    resolved = true;
-    cancelAnimationFrame(rafId);
-    const marker = modalLayer.querySelector('#haggle-marker') as HTMLDivElement | null;
-    const resultEl = modalLayer.querySelector('#haggle-result') as HTMLDivElement | null;
-    const stopBtn = modalLayer.querySelector<HTMLButtonElement>('.haggle-stop-btn');
-    if (stopBtn) stopBtn.disabled = true;
-    if (resultEl) resultEl.textContent = label;
-    if (marker) marker.classList.add('haggle-marker-stopped');
-    playChime();
-    setTimeout(() => {
-      completeCheckout(ticketId, multiplier);
-      closeModal();
-    }, 900);
-  }
-
-  renderModal(
-    `
-    <h2>Haggling</h2>
-    <p class="modal-sub">${ticket.card.name} — listed at ${ticket.price}g. They're angling for a discount — stop the marker in the middle to hold your price!</p>
-    <div class="haggle-track">
-      <div class="haggle-zone haggle-zone-bad"></div>
-      <div class="haggle-zone haggle-zone-ok"></div>
-      <div class="haggle-zone haggle-zone-great"></div>
-      <div class="haggle-zone haggle-zone-ok"></div>
-      <div class="haggle-zone haggle-zone-bad"></div>
-      <div class="haggle-marker" id="haggle-marker"></div>
-    </div>
-    <p class="modal-sub haggle-result" id="haggle-result">&nbsp;</p>
-    <button class="btn haggle-stop-btn">Stop!</button>
-  `,
-    () => finish(0.75, 'They lost patience and walked off with a discount.'),
-  );
-
-  const marker = modalLayer.querySelector('#haggle-marker') as HTMLDivElement;
-
-  function tick() {
-    const pct = currentPct();
-    marker.style.left = `${pct}%`;
-    if (performance.now() - startedAt >= HAGGLE_TIMEOUT_MS) {
-      finish(0.75, 'They lost patience and walked off with a discount.');
-      return;
+  const finish = (finalPrice: number | null) => {
+    if (settled) return;
+    settled = true;
+    if (finalPrice != null) {
+      playCoin();
+      completeCheckout(t.id, finalPrice);
+    } else {
+      playError();
+      walkAwayFromCheckout(t.id);
     }
-    rafId = requestAnimationFrame(tick);
-  }
-  rafId = requestAnimationFrame(tick);
+    closeModal();
+  };
 
-  modalLayer.querySelector('.haggle-stop-btn')!.addEventListener('click', () => {
-    const { multiplier, label } = haggleResultFor(currentPct());
-    finish(multiplier, label);
-  });
+  const render = (feedback = '') => {
+    const atFinalRound = round > MAX_HAGGLE_ROUNDS;
+    const gap = t.price - offer;
+    const actionsHtml = atFinalRound
+      ? `<button class="btn haggle-accept-btn">Accept ${offer}g (final offer)</button>`
+      : gap <= 0
+        ? `<button class="btn haggle-accept-btn">Accept ${offer}g</button>`
+        : `<button class="btn haggle-accept-btn">Accept ${offer}g</button><button class="btn btn-secondary haggle-pushback-btn">Push Back</button>`;
+
+    renderModal(
+      `
+      <h2>Haggling</h2>
+      <p class="modal-sub">${t.card.name} — listed at ${t.price}g.</p>
+      <p class="modal-sub haggle-offer-line">Their offer: <strong>${offer}g</strong>${atFinalRound ? ' — take it or leave it.' : ''}</p>
+      ${feedback ? `<p class="modal-sub haggle-feedback">${feedback}</p>` : ''}
+      <div class="modal-actions">${actionsHtml}</div>
+      `,
+      // Walking away from the modal itself (X or Escape) just takes
+      // whatever's currently on the table — no punitive default beyond that.
+      () => finish(offer),
+    );
+
+    modalLayer.querySelector('.haggle-accept-btn')!.addEventListener('click', () => finish(offer));
+    modalLayer.querySelector('.haggle-pushback-btn')?.addEventListener('click', () => {
+      round += 1;
+      const walkAwayChance = HAGGLE_WALKAWAY_CHANCE[t.archetype] + (gameState.isExhausted ? EXHAUSTED_HAGGLE_WALKAWAY_BONUS : 0);
+      if (Math.random() < walkAwayChance) {
+        showFloatingText(t.scene, t.sprite.x, t.sprite.y - 20, `That's insulting.`, '#c92a2a');
+        finish(null);
+        return;
+      }
+      offer = Math.min(t.price, offer + Math.round(gap * (0.4 + Math.random() * 0.2)));
+      render(pickOne(HAGGLE_PUSHBACK_LINES));
+    });
+  };
+
+  render();
 }
 
 // Matches the rarity-pill colors elsewhere in the UI, used here as a glow
@@ -904,6 +906,7 @@ function openShelfModal(shelfId: string) {
     const baseValue = shelf.card.baseValue;
     bodyHtml = `
       <div class="reveal-grid">${cardSlotHtml(shelf.card)}</div>
+      <p class="modal-sub">Customers open with a lowball offer and haggle up from there — price it high expecting to get talked down some.</p>
       <label class="field-label">Price
         <input type="number" id="reprice-input" min="1" value="${shelf.price}" />
       </label>
@@ -1829,6 +1832,7 @@ export function initUI() {
         <span class="energy-icon">&#9889;</span>
         <div class="energy-track"><div id="energy-fill" class="energy-fill${gameState.energy / gameState.maxEnergy < 0.25 ? ' energy-low' : ''}" style="width:${(gameState.energy / gameState.maxEnergy) * 100}%"></div></div>
       </div>
+      <div id="exhausted-badge" class="exhausted-badge" title="Out of energy — slow, selling for less, and worse at everything until you sleep." ${gameState.isExhausted ? '' : 'hidden'}>EXHAUSTED</div>
       <button id="menu-btn" class="btn btn-small">&#9776; Menu</button>
     </div>
     <div id="auto-sale-toast" class="auto-sale-toast" hidden></div>
@@ -1911,6 +1915,8 @@ export function initUI() {
       fill.style.width = `${pct}%`;
       fill.classList.toggle('energy-low', pct < 25);
     }
+    const badge = document.getElementById('exhausted-badge');
+    if (badge) (badge as HTMLElement).hidden = !gameState.isExhausted;
   });
   bus.on('inventory-changed', renderBagCount);
   bus.on('shop-upgrades-changed', renderBagCount);

@@ -54,10 +54,16 @@ export const ENERGY_DRAIN_PER_SEC = PLAYER_MAX_ENERGY / 300;
 // On top of the passive drain, active on top while in the Wilds — burns
 // through energy roughly 4x faster than just standing around.
 export const WILDS_EXTRA_ENERGY_DRAIN_PER_SEC = ENERGY_DRAIN_PER_SEC * 3;
-// Exhausted (0 energy): the player is "practically defenseless" in combat.
+// Exhausted (0 energy): the player is "practically defenseless" in combat,
+// and running the shop on empty is genuinely bad everywhere else too — a
+// hard move-speed and sale-price cut, applied globally (see moveSpeed and
+// saleGoldMultiplier below), not just a Wilds-only combat penalty.
 export const EXHAUSTED_ATTACK_DAMAGE = 1;
 export const EXHAUSTED_SPEED_MULTIPLIER = 0.4;
 export const EXHAUSTED_DAMAGE_TAKEN_MULTIPLIER = 1.6;
+export const EXHAUSTED_SALE_MULTIPLIER = 0.5;
+export const EXHAUSTED_FRIENDSHIP_MULTIPLIER = 0.5;
+export const EXHAUSTED_HAGGLE_WALKAWAY_BONUS = 0.15;
 
 export const BAG_BASE_CAPACITY = 12;
 export const BAG_TIER_CAPACITY_BONUS = 8;
@@ -347,7 +353,10 @@ class GameState {
       this.movementUpgrades.speedTier3,
       this.movementUpgrades.speedTier4,
     ].filter(Boolean).length;
-    return PLAYER_BASE_SPEED + tiers * SPEED_TIER_BONUS;
+    const base = PLAYER_BASE_SPEED + tiers * SPEED_TIER_BONUS;
+    // Applied here rather than per-scene so running out of energy actually
+    // means something everywhere — not just a Wilds-combat penalty.
+    return this.isExhausted ? base * EXHAUSTED_SPEED_MULTIPLIER : base;
   }
 
   get equippedOutfitColor(): number {
@@ -402,11 +411,12 @@ class GameState {
 
   /** Combined bonus applied to shop sale prices: prestige's Golden Touch
    * perk, a small permanent bump per fully-discovered season, and the
-   * Fair Trade perk-tree unlock. */
+   * Fair Trade perk-tree unlock — cut hard by running the shop on empty. */
   get saleGoldMultiplier(): number {
     const goldenTouchTiers = this.prestigePerks.filter((p) => p === 'goldenTouch').length;
     const fairTrade = this.hasPerk('fairTrade') ? 0.05 : 0;
-    return 1 + goldenTouchTiers * 0.1 + this.completedSeasons.length * 0.05 + fairTrade;
+    const base = 1 + goldenTouchTiers * 0.1 + this.completedSeasons.length * 0.05 + fairTrade;
+    return this.isExhausted ? base * EXHAUSTED_SALE_MULTIPLIER : base;
   }
 
   hasPerk(id: string): boolean {
@@ -532,9 +542,9 @@ class GameState {
     return result;
   }
 
-  /** Completes a sale at the register — either a plain shelf sale (paid in
-   * full, priceMultiplier 1) or a reserved one settled after haggling, where
-   * priceMultiplier reflects how the minigame went. */
+  /** Completes a sale at the register — either a plain shelf sale (the full
+   * listed price, priceMultiplier 1) or a reserved one settled after
+   * haggling, where `price` is already the negotiated amount. */
   completeReservedSale(price: number, priceMultiplier: number): number {
     const earned = Math.round(price * this.saleGoldMultiplier * priceMultiplier);
     this.addGold(earned);
@@ -543,6 +553,18 @@ class GameState {
     this.lifetimeCardsSold += 1;
     bus.emit('board-progress-changed');
     return earned;
+  }
+
+  /** A haggle that fell through — the reserved card goes back on display
+   * rather than being lost, unless the shelf's been restocked with
+   * something else in the meantime, in which case it just goes to the bag. */
+  returnCardToShelf(shelfId: string, card: Card, price: number): boolean {
+    const shelf = this.shelves.find((s) => s.id === shelfId);
+    if (!shelf || shelf.card) return false;
+    shelf.card = card;
+    shelf.price = price;
+    bus.emit('shelves-changed', this.shelves);
+    return true;
   }
 
   /** Real-time accumulator for the Shop Clerk's next automatic sale — ticks
@@ -663,7 +685,9 @@ class GameState {
   talkToNpc(npcId: string): { alreadyTalkedToday: boolean; gain: number } {
     const npc = this.npcs[npcId];
     if (npc.lastTalkedDay === this.day) return { alreadyTalkedToday: true, gain: 0 };
-    const gain = (this.townUpgrades.fountainRepaired ? 3 : 2) + (this.hasPerk('friendlyFace') ? 1 : 0);
+    const baseGain = (this.townUpgrades.fountainRepaired ? 3 : 2) + (this.hasPerk('friendlyFace') ? 1 : 0);
+    // Too drained to really connect — barely worth the walk over.
+    const gain = this.isExhausted ? Math.max(1, Math.round(baseGain * EXHAUSTED_FRIENDSHIP_MULTIPLIER)) : baseGain;
     npc.friendship = Math.min(100, npc.friendship + gain);
     npc.lastTalkedDay = this.day;
     bus.emit('npc-changed', npcId);
