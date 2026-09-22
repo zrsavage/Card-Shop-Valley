@@ -70,3 +70,15 @@ export const RECURRING_FEE_DEFS: RecurringFeeDef[] = [
     description: 'Nobody in town can explain what this actually pays for. It shows up on the bill regardless.',
   },
 ];
+
+// The bill only gets steeper from here — the same fees, but a growing
+// multiplier so week 1's debt is survivable and week 20's is a real threat.
+// Paying a fee off is exempt from this entirely (its payoff cost never
+// moves), which is the whole point: escalation is the cost of waiting.
+export const WEEKLY_FEE_ESCALATION_PER_WEEK = 0.15;
+export const WEEKLY_FEE_ESCALATION_CAP = 4;
+
+export function weeklyFeeMultiplier(day: number): number {
+  const week = Math.floor((day - 1) / 7);
+  return Math.min(WEEKLY_FEE_ESCALATION_CAP, 1 + week * WEEKLY_FEE_ESCALATION_PER_WEEK);
+}

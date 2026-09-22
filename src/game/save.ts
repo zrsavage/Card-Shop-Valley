@@ -17,6 +17,7 @@ const SAVE_KEY = 'card-shop-valley-save-v1';
 interface SaveData {
   gold: number;
   day: number;
+  shopNumber: number;
   inventory: Card[];
   shelves: ShelfSlot[];
   shopUpgrades: ShopUpgrades;
@@ -53,6 +54,7 @@ export function saveGame() {
     const data: SaveData = {
       gold: gameState.gold,
       day: gameState.day,
+      shopNumber: gameState.shopNumber,
       inventory: gameState.inventory,
       shelves: gameState.shelves,
       shopUpgrades: gameState.shopUpgrades,
@@ -96,6 +98,7 @@ export function loadGame(): boolean {
     const data = JSON.parse(raw) as Partial<SaveData>;
     if (typeof data.gold === 'number') gameState.gold = data.gold;
     if (typeof data.day === 'number') gameState.day = data.day;
+    if (typeof data.shopNumber === 'number') gameState.shopNumber = data.shopNumber;
     if (Array.isArray(data.inventory)) gameState.inventory = data.inventory;
     if (Array.isArray(data.shelves)) {
       // Merge by id so a save from before a shelf-count change (e.g. new

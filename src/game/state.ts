@@ -26,7 +26,7 @@ import { rollFish, FISHING_ENERGY_COST, type FishDef } from './fishing';
 import { DECOR_ITEMS } from './decor';
 import { PERKS } from './perks';
 import { DAILY_BOSS_KILL_CAP } from './combat';
-import { RECURRING_FEE_DEFS } from './fees';
+import { RECURRING_FEE_DEFS, weeklyFeeMultiplier } from './fees';
 
 export const bus = new Phaser.Events.EventEmitter();
 
@@ -141,6 +141,14 @@ export interface DaySummary {
   feeNames: string[];
 }
 
+/** Emitted by endDay() instead of a DaySummary when the weekly bill comes
+ * due and there isn't enough gold to cover it — the day does not advance. */
+export interface BankruptDetails {
+  day: number;
+  due: number;
+  had: number;
+}
+
 function defaultShopUpgrades(): ShopUpgrades {
   return {
     extraShelvesTier1: false,
@@ -203,6 +211,14 @@ function defaultMovementUpgrades(): MovementUpgrades {
   };
 }
 
+// Every fresh start (a brand-new game, Prestige, or opening a second shop)
+// begins broke — a handful of starter packs to sell into gold, nothing else.
+const STARTER_PACK_ID = 'starter';
+const STARTER_PACK_COUNT = 3;
+function defaultStarterPacks(): string[] {
+  return new Array(STARTER_PACK_COUNT).fill(STARTER_PACK_ID);
+}
+
 function defaultNpcStates(): Record<string, NpcState> {
   const record: Record<string, NpcState> = {};
   for (const npc of NPCS) {
@@ -212,8 +228,13 @@ function defaultNpcStates(): Record<string, NpcState> {
 }
 
 class GameState {
-  gold = 100;
+  // Broke on day one, on purpose — the only starting capital is a few packs
+  // to sell your way out of debt with. See defaultStarterPacks() below.
+  gold = 0;
   day = 1;
+  /** How many times a shop here has started fresh with the debt already
+   * beaten (see openSecondShop()) — just flavor, never resets. */
+  shopNumber = 1;
   inventory: Card[] = [];
   shelves: ShelfSlot[] = SHOP_SHELF_POSITIONS.map((_, i) => ({
     id: `shelf-${i}`,
@@ -285,8 +306,8 @@ class GameState {
   hp = PLAYER_BASE_MAX_HP;
   energy = PLAYER_MAX_ENERGY;
   /** Pack ids ready to open now — from combat drops (same day) or a
-   * purchase placed on a previous day. */
-  ownedPacks: string[] = [];
+   * purchase placed on a previous day. Starts with the fresh-start freebies. */
+  ownedPacks: string[] = defaultStarterPacks();
   /** Pack ids bought today — a purchase is an overnight order, not an
    * instant open, so there's a reason to go do something else with today's
    * energy instead of just cycling packs at the counter. */
@@ -639,9 +660,25 @@ class GameState {
     return true;
   }
 
-  /** Total still due on the next weekly bill — every fee not yet paid off. */
+  /** Total still due on the next weekly bill — every fee not yet paid off,
+   * scaled up by how many weeks have gone by. Escalation is the cost of
+   * leaving a fee unpaid; the one-time payoff cost never moves. */
   get weeklyFeeTotal(): number {
-    return RECURRING_FEE_DEFS.reduce((sum, def) => sum + (this.recurringFees[def.key] ? 0 : def.weeklyCost), 0);
+    const multiplier = weeklyFeeMultiplier(this.day);
+    return RECURRING_FEE_DEFS.reduce((sum, def) => sum + (this.recurringFees[def.key] ? 0 : Math.round(def.weeklyCost * multiplier)), 0);
+  }
+
+  /** The next day the weekly bill comes due — always a multiple of 7,
+   * including today if today is itself payment day and hasn't run yet. */
+  get nextPaymentDay(): number {
+    const intoWeek = this.day % 7;
+    return intoWeek === 0 ? this.day : this.day + (7 - intoWeek);
+  }
+
+  /** True once every recurring fee has been permanently paid off — the
+   * debt is beaten for good, and openSecondShop() becomes available. */
+  get isDebtFree(): boolean {
+    return RECURRING_FEE_DEFS.every((def) => this.recurringFees[def.key]);
   }
 
   /** A one-time Town Hall purchase that permanently removes a specific fee
@@ -651,6 +688,60 @@ class GameState {
     if (!this.spendGold(cost)) return false;
     this.recurringFees[key] = true;
     bus.emit('recurring-fees-changed', this.recurringFees);
+    return true;
+  }
+
+  /** Only available once isDebtFree is true — a full reset (same shape as
+   * Prestige) except recurringFees is left exactly as it is, all waived,
+   * so the new shop never owes anything. No perk, no power spike: the
+   * reward is simply an honest fresh start with the debt gone for good. */
+  openSecondShop(): boolean {
+    if (!this.isDebtFree) return false;
+    this.shopNumber += 1;
+    this.gold = 0;
+    this.day = 1;
+    this.inventory = [];
+    this.shelves = SHOP_SHELF_POSITIONS.map((_, i) => ({ id: `shelf-${i}`, card: null, price: 0 }));
+    this.shopUpgrades = defaultShopUpgrades();
+    this.townUpgrades = defaultTownUpgrades();
+    // recurringFees intentionally left untouched — already fully paid off.
+    this.combatUpgrades = defaultCombatUpgrades();
+    this.movementUpgrades = defaultMovementUpgrades();
+    this.npcs = defaultNpcStates();
+    this.ownedPacks = defaultStarterPacks();
+    this.pendingPacks = [];
+    this.pendingShopUpgrades = [];
+    this.unlockedZones = ['bramble'];
+    this.currentZoneId = 'bramble';
+    this.goldEarnedToday = 0;
+    this.cardsSoldToday = 0;
+    this.enemiesDefeatedToday = 0;
+    this.giftsGivenToday = 0;
+    this.packsOpenedToday = 0;
+    this.fishCaughtToday = 0;
+    this.bossKillsToday = {};
+    this.townBoard = rollTownBoard(false);
+    this.merchantVisit = null;
+    this.shinyCharmActive = false;
+    this.hp = this.maxHp;
+    this.energy = this.maxEnergy;
+
+    bus.emit('gold-changed', this.gold);
+    bus.emit('day-changed', this.day);
+    bus.emit('inventory-changed', this.inventory);
+    bus.emit('shelves-changed', this.shelves);
+    bus.emit('shop-upgrades-changed', this.shopUpgrades);
+    bus.emit('town-upgrades-changed', this.townUpgrades);
+    bus.emit('recurring-fees-changed', this.recurringFees);
+    bus.emit('combat-upgrades-changed', this.combatUpgrades);
+    bus.emit('movement-upgrades-changed', this.movementUpgrades);
+    bus.emit('hp-changed', this.hp);
+    bus.emit('energy-changed', this.energy);
+    bus.emit('packs-changed', this.ownedPacks);
+    bus.emit('zones-changed', this.unlockedZones);
+    bus.emit('town-board-changed', this.townBoard);
+    bus.emit('merchant-changed', this.merchantVisit);
+    bus.emit('second-shop-opened', this.shopNumber);
     return true;
   }
 
@@ -860,7 +951,7 @@ class GameState {
     this.prestigeLevel += 1;
     this.prestigePerks.push(perkId);
 
-    this.gold = 100;
+    this.gold = 0;
     this.day = 1;
     this.inventory = [];
     this.shelves = SHOP_SHELF_POSITIONS.map((_, i) => ({ id: `shelf-${i}`, card: null, price: 0 }));
@@ -870,7 +961,7 @@ class GameState {
     this.combatUpgrades = defaultCombatUpgrades();
     this.movementUpgrades = defaultMovementUpgrades();
     this.npcs = defaultNpcStates();
-    this.ownedPacks = [];
+    this.ownedPacks = defaultStarterPacks();
     this.pendingPacks = [];
     this.pendingShopUpgrades = [];
     this.unlockedZones = ['bramble'];
@@ -895,6 +986,7 @@ class GameState {
     bus.emit('shelves-changed', this.shelves);
     bus.emit('shop-upgrades-changed', this.shopUpgrades);
     bus.emit('town-upgrades-changed', this.townUpgrades);
+    bus.emit('recurring-fees-changed', this.recurringFees);
     bus.emit('combat-upgrades-changed', this.combatUpgrades);
     bus.emit('movement-upgrades-changed', this.movementUpgrades);
     bus.emit('hp-changed', this.hp);
@@ -1030,12 +1122,19 @@ class GameState {
    * chooses to (e.g. the End Day button). */
   endDay() {
     // Bills come due every 7th day — rent and the town's more creative fees
-    // alike — for whichever of them haven't been permanently paid off yet.
-    // Never puts the player in debt; it just takes what's there.
+    // alike — for whichever of them haven't been permanently paid off yet,
+    // scaled up by how many weeks have gone by. Unlike before, this is a
+    // real debt: coming up short doesn't just clamp to zero, it ends the
+    // run outright (see the 'bankrupt' event) — the day never advances.
+    const multiplier = weeklyFeeMultiplier(this.day);
     const dueFees = this.day % 7 === 0 ? RECURRING_FEE_DEFS.filter((def) => !this.recurringFees[def.key]) : [];
-    const feesCharged = dueFees.reduce((sum, def) => sum + def.weeklyCost, 0);
+    const feesCharged = dueFees.reduce((sum, def) => sum + Math.round(def.weeklyCost * multiplier), 0);
+    if (feesCharged > this.gold) {
+      bus.emit('bankrupt', { day: this.day, due: feesCharged, had: this.gold });
+      return;
+    }
     if (feesCharged > 0) {
-      this.gold = Math.max(0, this.gold - feesCharged);
+      this.gold -= feesCharged;
       bus.emit('gold-changed', this.gold);
     }
 

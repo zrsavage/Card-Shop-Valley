@@ -17,6 +17,7 @@ import {
   PLAYER_BASE_ATTACK_DAMAGE,
   PLAYER_BASE_MAX_HP,
   type DaySummary,
+  type BankruptDetails,
 } from '../game/state';
 import { PACKS, openPack, type PackDefinition } from '../game/packs';
 import { RARITIES, RARITY_LABELS, RARITY_BASE_VALUE, SEASON_PRICE_MULTIPLIER } from '../game/cards';
@@ -1094,6 +1095,28 @@ function openDaySummaryModal(summary: DaySummary) {
   modalLayer.querySelector('.start-day-btn')!.addEventListener('click', closeModal);
 }
 
+// --- Bankruptcy (game over) ---
+
+/** The weekly bill came due and there wasn't enough gold to cover it — the
+ * run ends here. The only way out is the same wipe-and-reload Reset Save
+ * uses; there's no dismissing this one back into the game. */
+function openBankruptModal(details: BankruptDetails) {
+  renderModal(
+    `
+    <h2>Foreclosed</h2>
+    <p class="modal-sub">
+      Day ${details.day}: the bill came to <strong>${details.due}g</strong> and the register had
+      <strong>${details.had}g</strong> in it. The landlord changes the locks that afternoon. No hard
+      feelings — the town's just not in the business of running a tab.
+    </p>
+    <p class="modal-sub">Time to start a new shop, with a lighter debt and a clearer head.</p>
+    <button class="btn bankrupt-restart-btn">Start Over</button>
+  `,
+    () => {},
+  );
+  modalLayer.querySelector('.bankrupt-restart-btn')!.addEventListener('click', resetSave);
+}
+
 // --- Town Board (daily objectives, posted at the Town Hall) ---
 
 function townBoardRowHtml(obj: BoardObjective): string {
@@ -1137,6 +1160,18 @@ function openTownHallModal() {
 
   const feeRows = RECURRING_FEE_DEFS.map((def) => feeRowHtml(def.key)).join('');
 
+  const secondShopSection = gameState.isDebtFree
+    ? `
+      <h2 class="modal-section-title">Debt-Free</h2>
+      <p class="modal-sub">
+        Every bill in this shop is paid off for good — no weekly payment left, ever. Open a second
+        shop and start fresh with none of it: a new Day 1, gold back to zero, but no debt waiting
+        on the other end. Treat it as free play.
+      </p>
+      <button class="btn open-second-shop-btn">Open a Second Shop</button>
+    `
+    : '';
+
   renderModal(`
     <h2>Town Hall</h2>
     <p class="modal-sub">Invest your gold back into the town.</p>
@@ -1144,8 +1179,9 @@ function openTownHallModal() {
     <p class="modal-sub">Rerolls at the end of every day — unclaimed rewards don't carry over.</p>
     <div class="legacy-list">${gameState.townBoard.map(townBoardRowHtml).join('')}</div>
     <h2 class="modal-section-title">Weekly Bills</h2>
-    <p class="modal-sub">Due every 7th day, whether or not the shop sold anything &mdash; currently <strong>${gameState.weeklyFeeTotal}g/week</strong>. Pay a fee off once here and it's gone for good.</p>
+    <p class="modal-sub">Due every 7th day, whether or not the shop sold anything &mdash; currently <strong>${gameState.weeklyFeeTotal}g/week</strong> and rising the longer any of it goes unpaid. Pay a fee off once here and it's gone for good.</p>
     <div class="pack-list">${feeRows}</div>
+    ${secondShopSection}
     <h2 class="modal-section-title">Town Upgrades</h2>
     <div class="pack-list">${rows}</div>
     <h2 class="modal-section-title">Adventuring Upgrades</h2>
@@ -1182,7 +1218,33 @@ function openTownHallModal() {
       openTownHallModal();
     });
   });
+  modalLayer.querySelector('.open-second-shop-btn')?.addEventListener('click', confirmOpenSecondShop);
   modalLayer.querySelector('.close-btn')!.addEventListener('click', closeModal);
+}
+
+/** Debt-free is the whole unlock condition, so this is a celebration, not a
+ * warning — still worth a confirm since it resets the shop like Prestige does. */
+function confirmOpenSecondShop() {
+  renderModal(
+    `
+    <h2>Open a Second Shop?</h2>
+    <p class="modal-sub">
+      Gold resets to 0, the day resets to 1, and the shop, upgrades, and zones go back to how they
+      started — same as before. The difference: every bill stays paid off. No rent, no fees, no
+      weekly deadline, ever again. Your Encyclopedia, perks, and lifetime stats aren't touched.
+    </p>
+    <div class="modal-actions">
+      <button class="btn open-second-shop-confirm-btn">Open a Second Shop</button>
+      <button class="btn btn-secondary close-btn">Cancel</button>
+    </div>
+  `,
+    openTownHallModal,
+  );
+  modalLayer.querySelector('.open-second-shop-confirm-btn')!.addEventListener('click', () => {
+    gameState.openSecondShop();
+    closeModal();
+  });
+  modalLayer.querySelector('.close-btn')!.addEventListener('click', openTownHallModal);
 }
 
 // --- Wilds zone map ---
@@ -1770,12 +1832,16 @@ function dayTabHtml(): string {
     gameState.pendingPacks.length > 0
       ? ` ${gameState.pendingPacks.length} pending pack${gameState.pendingPacks.length === 1 ? '' : 's'} will arrive.`
       : '';
+  const debtLine = gameState.isDebtFree
+    ? `<p class="modal-sub"><strong>Debt-free.</strong> No weekly bill left to worry about.</p>`
+    : `<p class="modal-sub">Next bill: <strong>${gameState.weeklyFeeTotal}g</strong> due Day ${gameState.nextPaymentDay}. Come up short and the shop's gone — budget ahead, or pay fees off for good at Town Hall.</p>`;
   return `
     <p class="modal-sub">
       Day ${gameState.day} &middot; ${SEASON_SET_NAME[gameState.season]}
       &middot; ${gameState.daysLeftInSeason} day${gameState.daysLeftInSeason === 1 ? '' : 's'} left before this set rotates out.
     </p>
     <p class="modal-sub">Energy: ${Math.round(gameState.energy)}/${gameState.maxEnergy}. Ending the day fully restores it.${pendingLine}</p>
+    ${debtLine}
     <button class="btn end-day-btn">End Day</button>
     <h2 class="modal-section-title">Danger Zone</h2>
     <p class="modal-sub">Erase everything — gold, cards, upgrades, friendships — and start over from Day 1.</p>
@@ -1785,9 +1851,33 @@ function dayTabHtml(): string {
 
 function wireDayTab() {
   modalLayer.querySelector('.end-day-btn')!.addEventListener('click', () => {
-    gameState.endDay();
+    const willMissPayment = gameState.day === gameState.nextPaymentDay && gameState.weeklyFeeTotal > gameState.gold;
+    if (willMissPayment) confirmEndDayBankruptcyRisk();
+    else gameState.endDay();
   });
   modalLayer.querySelector('.reset-save-btn')!.addEventListener('click', confirmResetSave);
+}
+
+/** A last chance to back out before ending a day you can't actually afford
+ * — bankruptcy should be a choice the player understands, not a surprise. */
+function confirmEndDayBankruptcyRisk() {
+  renderModal(
+    `
+    <h2>You Can't Cover the Bill</h2>
+    <p class="modal-sub">
+      Today's payment is <strong>${gameState.weeklyFeeTotal}g</strong> and the register only has
+      <strong>${gameState.gold}g</strong>. Ending the day now means losing the shop. Go earn or
+      haggle for the rest first, or end the day anyway and take the loss.
+    </p>
+    <div class="modal-actions">
+      <button class="btn btn-secondary end-day-anyway-btn">End Day Anyway</button>
+      <button class="btn close-btn">Keep Working</button>
+    </div>
+  `,
+    () => openMenuModal('day'),
+  );
+  modalLayer.querySelector('.end-day-anyway-btn')!.addEventListener('click', () => gameState.endDay());
+  modalLayer.querySelector('.close-btn')!.addEventListener('click', () => openMenuModal('day'));
 }
 
 /** window.confirm() doesn't reliably show inside a sandboxed embed (the
@@ -1917,6 +2007,14 @@ export function showIntroModal() {
       a dusty counter in a town where the fountain doesn't run, the Town Hall clerk looks
       personally offended by joy, and — for reasons absolutely nobody will explain — the woods
       out back are full of monsters that occasionally drop trading cards. Seems fine. Probably fine.
+    </p>
+    <p class="modal-sub">
+      What the letter left out: the previous owner left <strong>0g</strong> in the register and a
+      pile of unpaid bills. All you've got to your name is <strong>3 starter packs</strong> and
+      whatever you can pull out of the woods. Rent and the rest come due every 7th day, the bill
+      only gets steeper the longer it goes unpaid, and if you can't cover it when it's due, the
+      shop's gone for good. Pay a bill off for good at Town Hall and it never comes back — that's
+      the way out, if you can manage it.
     </p>
     <p class="modal-sub">
       Anyway. You sell cards now. Let's make some gold.
@@ -2085,6 +2183,7 @@ export function initUI() {
   bus.on('open-haggle', (ticketId: number) => openHaggleModal(ticketId));
   bus.on('open-shelf', (shelfId: string) => openShelfModal(shelfId));
   bus.on('day-summary', (summary: DaySummary) => openDaySummaryModal(summary));
+  bus.on('bankrupt', (details: BankruptDetails) => openBankruptModal(details));
   bus.on('open-townhall', openTownHallModal);
   bus.on('open-zonemap', openZoneMapModal);
   bus.on('open-merchant', openMerchantModal);
