@@ -20,7 +20,9 @@ const STEP_INTERVAL_MS = 300;
 const ATTACK_COOLDOWN_MS = 400;
 const CONTACT_DAMAGE_COOLDOWN_MS = 900;
 const HP_REGEN_DELAY_MS = 3000;
-const HP_REGEN_PER_SEC = 6;
+// Was 6/sec — full HP back in under 20s made getting hit almost meaningless.
+// A real fight should be able to outpace this on its own.
+const HP_REGEN_PER_SEC = 2;
 
 // Boss special attacks.
 const SPECIAL_COOLDOWN_MS = 6000;

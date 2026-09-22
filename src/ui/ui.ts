@@ -854,6 +854,16 @@ function openPackRevealModal(pack: PackDefinition, cards: Card[]) {
 
   let idx = 0;
 
+  // Clicking the card itself does the same thing as "Open Next" / "Collect
+  // Cards" — a much faster way to blow through a big haul than hunting for
+  // the button every time. `stage` itself is never replaced (only its
+  // children, via replaceChildren below), so one listener covers every card.
+  stage.style.cursor = 'pointer';
+  stage.addEventListener('click', () => {
+    if (idx >= order.length) finish();
+    else revealNext();
+  });
+
   function spotlight(card: Card): boolean {
     const bigMoment = card.rarity === 'legendary' || card.shiny;
     const wrap = document.createElement('div');
@@ -962,6 +972,23 @@ function updatePriceBadge(badge: HTMLElement, baseValue: number, price: number) 
   badge.textContent = tier.label;
 }
 
+/** Scroll the wheel over a price field to bump it up or down — much faster
+ * than typing for a quick adjustment. Step size scales with the current
+ * value so it's still useful on a 500g legendary, not just a 5g common. */
+function addScrollPriceAdjust(input: HTMLInputElement, onChange: () => void) {
+  input.addEventListener(
+    'wheel',
+    (e) => {
+      e.preventDefault();
+      const current = Number(input.value) || 0;
+      const step = Math.max(1, Math.round(current / 20));
+      input.value = String(Math.max(1, current + (e.deltaY < 0 ? step : -step)));
+      onChange();
+    },
+    { passive: false },
+  );
+}
+
 function openShelfModal(shelfId: string) {
   const shelf = gameState.shelves.find((s) => s.id === shelfId)!;
   let bodyHtml: string;
@@ -1009,9 +1036,9 @@ function openShelfModal(shelfId: string) {
     const baseValue = shelf.card.baseValue;
     const repriceInput = modalLayer.querySelector('#reprice-input') as HTMLInputElement;
     const badge = modalLayer.querySelector('.price-badge') as HTMLElement;
-    repriceInput.addEventListener('input', () => {
-      updatePriceBadge(badge, baseValue, Number(repriceInput.value) || 0);
-    });
+    const onRepriceChange = () => updatePriceBadge(badge, baseValue, Number(repriceInput.value) || 0);
+    repriceInput.addEventListener('input', onRepriceChange);
+    addScrollPriceAdjust(repriceInput, onRepriceChange);
     modalLayer.querySelector('.update-price-btn')!.addEventListener('click', () => {
       gameState.repriceShelf(shelfId, Number(repriceInput.value));
       closeModal();
@@ -1026,9 +1053,9 @@ function openShelfModal(shelfId: string) {
       const card = gameState.inventory[idx];
       const priceInput = row.querySelector('.place-price-input') as HTMLInputElement;
       const badge = row.querySelector('.price-badge') as HTMLElement;
-      priceInput.addEventListener('input', () => {
-        updatePriceBadge(badge, card.baseValue, Number(priceInput.value) || 0);
-      });
+      const onPlaceChange = () => updatePriceBadge(badge, card.baseValue, Number(priceInput.value) || 0);
+      priceInput.addEventListener('input', onPlaceChange);
+      addScrollPriceAdjust(priceInput, onPlaceChange);
     });
     modalLayer.querySelectorAll<HTMLButtonElement>('.place-btn').forEach((btn) => {
       btn.addEventListener('click', () => {
@@ -1953,6 +1980,19 @@ export function initUI() {
   });
   bus.on('open-menu', () => {
     if (!modalLayer.innerHTML) openMenuModal();
+  });
+  // Every scene's own E-interact is gated behind !gameState.paused, so it
+  // never fires again once a modal (the Menu included) is open — meaning
+  // "E opens the Menu" would otherwise have no matching "E closes it".
+  // This picks up exactly that slack, mirroring Escape's close behavior,
+  // without touching an "e" a player is legitimately typing into a field
+  // (a price, a custom haggle %, "1e3" and the like).
+  document.addEventListener('keydown', (e) => {
+    if (e.key.toLowerCase() !== 'e') return;
+    if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+    if (!modalLayer.innerHTML) return;
+    e.preventDefault();
+    activeCloseHandler();
   });
 
   renderSeasonBadge();
