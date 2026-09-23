@@ -7,6 +7,7 @@ import { playerTextureKey, attachCircleBody, WalkAnimator } from '../game/pixelA
 import { woodTextureKey } from '../game/sceneryArt';
 import { DECOR_ITEMS, type DecorDef } from '../game/decor';
 import { playFootstep } from '../game/audio';
+import { musicManager } from '../game/music';
 
 const INTERACT_RANGE = 70;
 const STEP_INTERVAL_MS = 300;
@@ -38,6 +39,7 @@ export default class ShopScene extends Phaser.Scene {
   }
 
   create() {
+    musicManager.playScene('shop');
     this.cameras.main.setBackgroundColor('#3e2723');
     this.shelfVisuals = [];
     this.customerSpawnTimer = 0;

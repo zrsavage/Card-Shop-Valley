@@ -15,6 +15,7 @@ import { WILDS_FROM_TOWN_POS, WILDS_TO_TOWN_TRIGGER } from '../game/layout';
 import { playerTextureKey, monsterTextureKey, attachCircleBody, WalkAnimator } from '../game/pixelArt';
 import { grassTextureKey, stoneGroundTextureKey } from '../game/sceneryArt';
 import { playHit, playPlayerHurt, playLegendary, playFootstep } from '../game/audio';
+import { musicManager } from '../game/music';
 
 const STEP_INTERVAL_MS = 300;
 const ATTACK_COOLDOWN_MS = 400;
@@ -98,6 +99,7 @@ export default class WildsScene extends Phaser.Scene {
   }
 
   create() {
+    musicManager.playScene('wilds');
     this.zone = ZONE_DEFS.find((z) => z.id === gameState.currentZoneId) ?? ZONE_DEFS[0];
     this.cameras.main.setBackgroundColor(this.zone.cameraBg);
     this.enemies = [];

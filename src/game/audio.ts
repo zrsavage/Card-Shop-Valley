@@ -4,7 +4,9 @@
 
 let ctx: AudioContext | null = null;
 
-function getCtx(): AudioContext | null {
+/** Shared with music.ts so the ambient score and SFX run through one
+ * AudioContext instead of each needing its own browser-autoplay unlock. */
+export function getCtx(): AudioContext | null {
   try {
     if (!ctx) {
       const Ctor = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;

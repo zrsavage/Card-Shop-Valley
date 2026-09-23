@@ -10,9 +10,13 @@ import { loadGame, initAutosave } from './game/save';
 import { gameState, bus } from './game/state';
 import { checkoutQueue } from './game/Customer';
 import { playerTextureKey, humanoidTextureKey } from './game/pixelArt';
+import { musicManager } from './game/music';
 
 const isBrandNewGame = !loadGame();
 initAutosave();
+// Apply the saved mute/volume preference before any scene starts its music
+// loop, so the very first note already respects it.
+musicManager.init(gameState.musicMuted, gameState.musicVolume);
 
 const config: Phaser.Types.Core.GameConfig = {
   type: Phaser.AUTO,
@@ -43,6 +47,7 @@ if (import.meta.env.DEV) {
         checkoutQueue: typeof checkoutQueue;
         playerTextureKey: typeof playerTextureKey;
         humanoidTextureKey: typeof humanoidTextureKey;
+        musicManager: typeof musicManager;
       };
     }
   ).__debug = {
@@ -52,5 +57,6 @@ if (import.meta.env.DEV) {
     checkoutQueue,
     playerTextureKey,
     humanoidTextureKey,
+    musicManager,
   };
 }

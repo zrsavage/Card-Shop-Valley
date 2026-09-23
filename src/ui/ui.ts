@@ -26,8 +26,10 @@ import { cardArtHtml } from '../game/cardArt';
 import { SEASON_SET_NAME, SEASON_CARD_POOL, STAGE_VALUE_MULTIPLIER, type SpeciesCard } from '../game/species';
 import { ZONE_DEFS, type ZoneDef } from '../game/combat';
 import { LEGACY_MILESTONES, LEGACY_CAPSTONE, type LegacyMilestone } from '../game/legacy';
+import { ACHIEVEMENTS, ACHIEVEMENT_CATEGORY_ORDER, checkAchievements, type Achievement } from '../game/achievements';
 import { priceReactionFor } from '../game/pricing';
 import { playCardPop, playPackOpen, playLegendary, playChime, playCoin, playError } from '../game/audio';
+import { musicManager } from '../game/music';
 import type { Card, ShopUpgrades, TownUpgrades, RecurringFees, CombatUpgrades, MovementUpgrades, Season, Rarity, BoardObjective, MerchantOffer } from '../game/types';
 import { RECURRING_FEE_DEFS } from '../game/fees';
 import { PRESTIGE_PERKS } from '../game/prestige';
@@ -1498,6 +1500,14 @@ function decorRowHtml(item: DecorDef): string {
 function customizeTabHtml(): string {
   return `
     <p class="modal-sub">Spend gold on how you look and how your shop feels — pure style, no gameplay effect.</p>
+    <h2 class="modal-section-title">Sound</h2>
+    <div class="sound-settings-row">
+      <button class="btn btn-small music-mute-btn">${gameState.musicMuted ? '&#128264; Unmute Music' : '&#128266; Mute Music'}</button>
+      <label class="music-volume-label">
+        Music volume
+        <input type="range" class="music-volume-slider" min="0" max="100" value="${Math.round(gameState.musicVolume * 100)}" ${gameState.musicMuted ? 'disabled' : ''} />
+      </label>
+    </div>
     <h2 class="modal-section-title">Outfits</h2>
     <div class="pack-list">${OUTFITS.map(outfitRowHtml).join('')}</div>
     <h2 class="modal-section-title">Shop Decorations</h2>
@@ -1506,6 +1516,20 @@ function customizeTabHtml(): string {
 }
 
 function wireCustomizeTab() {
+  modalLayer.querySelector('.music-mute-btn')?.addEventListener('click', () => {
+    gameState.musicMuted = !gameState.musicMuted;
+    musicManager.setMuted(gameState.musicMuted);
+    bus.emit('audio-settings-changed');
+    openMenuModal('customize');
+  });
+  modalLayer.querySelector<HTMLInputElement>('.music-volume-slider')?.addEventListener('input', (e) => {
+    const value = Number((e.target as HTMLInputElement).value) / 100;
+    gameState.musicVolume = value;
+    musicManager.setVolume(value);
+  });
+  modalLayer.querySelector<HTMLInputElement>('.music-volume-slider')?.addEventListener('change', () => {
+    bus.emit('audio-settings-changed');
+  });
   modalLayer.querySelectorAll<HTMLButtonElement>('.buy-outfit-btn').forEach((btn) => {
     btn.addEventListener('click', () => {
       const outfit = OUTFITS.find((o) => o.id === btn.dataset.id)!;
@@ -1827,6 +1851,42 @@ function wireLegacyTab() {
   modalLayer.querySelector('.prestige-btn')?.addEventListener('click', openPrestigeChoiceModal);
 }
 
+// --- Achievements (a permanent trophy case — unlike Legacy, nothing here
+// is ever reset by Prestige) ---
+
+function achievementRowHtml(a: Achievement): string {
+  const done = gameState.unlockedAchievementIds.has(a.id);
+  return `
+    <div class="legacy-row${done ? ' legacy-row-done' : ''}">
+      <div class="legacy-check">${done ? '&#10003;' : ''}</div>
+      <div class="legacy-info">
+        <div class="legacy-name">${a.name}</div>
+        <div class="legacy-desc">${a.description}</div>
+      </div>
+    </div>
+  `;
+}
+
+function achievementsTabHtml(): string {
+  // Defensive — the bus-event hooks in initUI() should already catch every
+  // newly-crossed threshold, but this makes sure the list is never stale
+  // the moment it's opened regardless.
+  checkAchievements();
+  const doneCount = ACHIEVEMENTS.filter((a) => gameState.unlockedAchievementIds.has(a.id)).length;
+  const sections = ACHIEVEMENT_CATEGORY_ORDER.map((category) => {
+    const rows = ACHIEVEMENTS.filter((a) => a.category === category)
+      .map(achievementRowHtml)
+      .join('');
+    return `<h2 class="modal-section-title">${category}</h2><div class="legacy-list">${rows}</div>`;
+  }).join('');
+  return `
+    <p class="modal-sub">
+      ${doneCount}/${ACHIEVEMENTS.length} unlocked. Lifetime records — Prestige never resets these.
+    </p>
+    ${sections}
+  `;
+}
+
 // --- Day (part of the Menu — ends the day in place of the old standalone button) ---
 
 function dayTabHtml(): string {
@@ -1934,12 +1994,13 @@ function wirePerksTab() {
 
 // --- Menu (tabbed: Bag / Cards / Legacy / Customize / Day) ---
 
-type MenuTab = 'bag' | 'cards' | 'legacy' | 'perks' | 'customize' | 'day';
+type MenuTab = 'bag' | 'cards' | 'legacy' | 'achievements' | 'perks' | 'customize' | 'day';
 
 const MENU_TABS: { id: MenuTab; label: string }[] = [
   { id: 'bag', label: '&#127890; Bag' },
   { id: 'cards', label: '&#128214; Cards' },
   { id: 'legacy', label: '&#127942; Legacy' },
+  { id: 'achievements', label: '&#127941; Achievements' },
   { id: 'perks', label: '&#127775; Perks' },
   { id: 'customize', label: '&#127912; Customize' },
   { id: 'day', label: '&#9203; Day' },
@@ -1961,11 +2022,13 @@ function openMenuModal(tab: MenuTab = activeMenuTab) {
         ? cardsTabHtml()
         : tab === 'legacy'
           ? legacyTabHtml()
-          : tab === 'perks'
-            ? perksTabHtml()
-            : tab === 'customize'
-              ? customizeTabHtml()
-              : dayTabHtml();
+          : tab === 'achievements'
+            ? achievementsTabHtml()
+            : tab === 'perks'
+              ? perksTabHtml()
+              : tab === 'customize'
+                ? customizeTabHtml()
+                : dayTabHtml();
 
   renderModal(`
     <h2>Menu</h2>
@@ -2064,6 +2127,7 @@ export function initUI() {
       <button id="menu-btn" class="btn btn-small">&#9776; Menu</button>
     </div>
     <div id="auto-sale-toast" class="auto-sale-toast" hidden></div>
+    <div id="achievement-toast" class="achievement-toast" hidden></div>
     <div id="modal-layer"></div>
   `;
   modalLayer = root.querySelector('#modal-layer') as HTMLDivElement;
@@ -2193,4 +2257,43 @@ export function initUI() {
   bus.on('open-merchant', openMerchantModal);
   bus.on('open-fountain', () => openFountainModal());
   bus.on('open-npc', (npcId: string) => openNpcModal(npcId));
+
+  // --- Achievements: re-check on every bus event that already fires on a
+  // relevant state change, so no new call sites are needed in state.ts. ---
+  const runAchievementCheck = () => {
+    const unlocked = checkAchievements();
+    if (unlocked.length > 0) queueAchievementToasts(unlocked);
+  };
+  bus.on('gold-changed', runAchievementCheck);
+  bus.on('inventory-changed', runAchievementCheck);
+  bus.on('board-progress-changed', runAchievementCheck);
+  bus.on('day-changed', runAchievementCheck);
+  bus.on('prestige', runAchievementCheck);
+  // Catches anything a loaded save already qualifies for the moment
+  // achievements first ship, so existing progress gets credited right away.
+  runAchievementCheck();
+}
+
+const achievementToastQueue: Achievement[] = [];
+let achievementToastTimer: ReturnType<typeof setTimeout> | null = null;
+
+function queueAchievementToasts(newlyUnlocked: Achievement[]) {
+  achievementToastQueue.push(...newlyUnlocked);
+  if (!achievementToastTimer) showNextAchievementToast();
+}
+
+function showNextAchievementToast() {
+  const toast = document.getElementById('achievement-toast');
+  const next = achievementToastQueue.shift();
+  if (!toast || !next) {
+    achievementToastTimer = null;
+    return;
+  }
+  toast.textContent = `🏅 Achievement Unlocked: ${next.name}`;
+  toast.hidden = false;
+  playChime();
+  achievementToastTimer = setTimeout(() => {
+    toast.hidden = true;
+    achievementToastTimer = setTimeout(showNextAchievementToast, 250);
+  }, 3200);
 }

@@ -4,6 +4,7 @@ import { GENERAL_STORE_COUNTER_POS, GENERAL_STORE_ENTRANCE_POS, GENERAL_STORE_DO
 import { playerTextureKey, attachCircleBody, WalkAnimator } from '../game/pixelArt';
 import { woodTextureKey } from '../game/sceneryArt';
 import { playFootstep } from '../game/audio';
+import { musicManager } from '../game/music';
 
 const INTERACT_RANGE = 70;
 const STEP_INTERVAL_MS = 300;
@@ -25,6 +26,7 @@ export default class GeneralStoreScene extends Phaser.Scene {
   }
 
   create() {
+    musicManager.playScene('generalStore');
     this.cameras.main.setBackgroundColor('#33291d');
     this.stepTimer = 0;
 

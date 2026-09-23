@@ -19,6 +19,7 @@ import type { Season } from '../game/types';
 import { humanoidTextureKey, playerTextureKey, attachCircleBody, WalkAnimator, attachWalkAnimation } from '../game/pixelArt';
 import { grassTextureKey, woodTextureKey, drawTownHall, drawBackgroundHouse, drawFountain, type FountainVisual } from '../game/sceneryArt';
 import { playFootstep } from '../game/audio';
+import { musicManager } from '../game/music';
 
 const INTERACT_RANGE = 70;
 const STEP_INTERVAL_MS = 300;
@@ -87,6 +88,7 @@ export default class TownScene extends Phaser.Scene {
   }
 
   create(data?: { from?: 'shop' | 'wilds' | 'distributor' | 'general-store' }) {
+    musicManager.playScene('town');
     this.cameras.main.setBackgroundColor('#2b2118');
     this.npcVisuals = [];
     this.stepTimer = 0;

@@ -47,6 +47,15 @@ interface SaveData {
   fishCaught: Record<string, number>;
   lifetimeFishCaught: number;
   unlockedPerks: string[];
+  lifetimeGiftsGiven: number;
+  lifetimeEnemiesDefeated: number;
+  lifetimePacksOpened: number;
+  lifetimeLegendaryPulls: number;
+  lifetimeShinyPulls: number;
+  lifetimeDaysPlayed: number;
+  unlockedAchievementIds: string[];
+  musicMuted: boolean;
+  musicVolume: number;
 }
 
 export function saveGame() {
@@ -84,6 +93,15 @@ export function saveGame() {
       fishCaught: gameState.fishCaught,
       lifetimeFishCaught: gameState.lifetimeFishCaught,
       unlockedPerks: gameState.unlockedPerks,
+      lifetimeGiftsGiven: gameState.lifetimeGiftsGiven,
+      lifetimeEnemiesDefeated: gameState.lifetimeEnemiesDefeated,
+      lifetimePacksOpened: gameState.lifetimePacksOpened,
+      lifetimeLegendaryPulls: gameState.lifetimeLegendaryPulls,
+      lifetimeShinyPulls: gameState.lifetimeShinyPulls,
+      lifetimeDaysPlayed: gameState.lifetimeDaysPlayed,
+      unlockedAchievementIds: [...gameState.unlockedAchievementIds],
+      musicMuted: gameState.musicMuted,
+      musicVolume: gameState.musicVolume,
     };
     localStorage.setItem(SAVE_KEY, JSON.stringify(data));
   } catch {
@@ -142,6 +160,18 @@ export function loadGame(): boolean {
     if (data.fishCaught) Object.assign(gameState.fishCaught, data.fishCaught);
     if (typeof data.lifetimeFishCaught === 'number') gameState.lifetimeFishCaught = data.lifetimeFishCaught;
     if (Array.isArray(data.unlockedPerks)) gameState.unlockedPerks = data.unlockedPerks;
+    if (typeof data.lifetimeGiftsGiven === 'number') gameState.lifetimeGiftsGiven = data.lifetimeGiftsGiven;
+    if (typeof data.lifetimeEnemiesDefeated === 'number') gameState.lifetimeEnemiesDefeated = data.lifetimeEnemiesDefeated;
+    if (typeof data.lifetimePacksOpened === 'number') gameState.lifetimePacksOpened = data.lifetimePacksOpened;
+    if (typeof data.lifetimeLegendaryPulls === 'number') gameState.lifetimeLegendaryPulls = data.lifetimeLegendaryPulls;
+    if (typeof data.lifetimeShinyPulls === 'number') gameState.lifetimeShinyPulls = data.lifetimeShinyPulls;
+    // Older saves predate this counter — fall back to the current day so a
+    // save that's clearly well into a run doesn't read as "just started".
+    if (typeof data.lifetimeDaysPlayed === 'number') gameState.lifetimeDaysPlayed = data.lifetimeDaysPlayed;
+    else gameState.lifetimeDaysPlayed = Math.max(gameState.lifetimeDaysPlayed, gameState.day);
+    if (Array.isArray(data.unlockedAchievementIds)) gameState.unlockedAchievementIds = new Set(data.unlockedAchievementIds);
+    if (typeof data.musicMuted === 'boolean') gameState.musicMuted = data.musicMuted;
+    if (typeof data.musicVolume === 'number') gameState.musicVolume = data.musicVolume;
     return true;
   } catch {
     return false;
@@ -199,4 +229,6 @@ export function initAutosave() {
   bus.on('movement-upgrades-changed', queueSave);
   bus.on('cosmetics-changed', queueSave);
   bus.on('perks-changed', queueSave);
+  bus.on('achievement-unlocked', queueSave);
+  bus.on('audio-settings-changed', queueSave);
 }

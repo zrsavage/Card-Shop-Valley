@@ -4,6 +4,7 @@ import { DISTRIBUTOR_COUNTER_POS, DISTRIBUTOR_ENTRANCE_POS, DISTRIBUTOR_DOOR_TRI
 import { playerTextureKey, attachCircleBody, WalkAnimator } from '../game/pixelArt';
 import { woodTextureKey } from '../game/sceneryArt';
 import { playFootstep } from '../game/audio';
+import { musicManager } from '../game/music';
 
 const INTERACT_RANGE = 70;
 const STEP_INTERVAL_MS = 300;
@@ -25,6 +26,7 @@ export default class DistributorScene extends Phaser.Scene {
   }
 
   create() {
+    musicManager.playScene('distributor');
     this.cameras.main.setBackgroundColor('#2e2a24');
     this.stepTimer = 0;
 

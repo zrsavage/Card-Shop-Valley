@@ -271,6 +271,26 @@ class GameState {
    * sold, gifted, or shelved — the Encyclopedia's "discovered" set. */
   discoveredCards = new Set<string>();
 
+  // --- Lifetime counters that exist purely for the Achievements tab — never
+  // reset by Prestige, unlike their *Today counterparts below. ---
+  lifetimeGiftsGiven = 0;
+  lifetimeEnemiesDefeated = 0;
+  lifetimePacksOpened = 0;
+  lifetimeLegendaryPulls = 0;
+  lifetimeShinyPulls = 0;
+  /** Counts from 1 (day 1 itself), incremented every endDay() call — unlike
+   * `day`, this is never reset back to 1 by Prestige. */
+  lifetimeDaysPlayed = 1;
+  /** Achievement ids ever unlocked — checked once per relevant bus event
+   * (see achievements.ts / ui.ts) rather than recomputed from scratch every
+   * render, so "just unlocked!" toasts only fire the moment a threshold is
+   * actually crossed. */
+  unlockedAchievementIds = new Set<string>();
+
+  /** Background music preference — persisted, independent of SFX. */
+  musicMuted = false;
+  musicVolume = 0.5;
+
   enemiesDefeatedToday = 0;
   giftsGivenToday = 0;
   packsOpenedToday = 0;
@@ -519,6 +539,8 @@ class GameState {
         this.discoveredCards.add(key);
         discoveredSomethingNew = true;
       }
+      if (card.rarity === 'legendary') this.lifetimeLegendaryPulls += 1;
+      if (card.shiny) this.lifetimeShinyPulls += 1;
     }
     bus.emit('inventory-changed', this.inventory);
     if (discoveredSomethingNew) bus.emit('cards-discovered', this.discoveredCards);
@@ -836,6 +858,7 @@ class GameState {
       npc.request = rollNpcRequest();
     }
     this.giftsGivenToday += 1;
+    this.lifetimeGiftsGiven += 1;
     bus.emit('npc-changed', npcId);
     bus.emit('board-progress-changed');
     return { friendshipGain, goldGain, matchedRequest };
@@ -844,6 +867,7 @@ class GameState {
   /** Called by the Wilds scene on every kill, regular or boss. */
   noteEnemyDefeated() {
     this.enemiesDefeatedToday += 1;
+    this.lifetimeEnemiesDefeated += 1;
     bus.emit('board-progress-changed');
   }
 
@@ -861,6 +885,7 @@ class GameState {
   /** Called right after a pack is opened, before its cards are added. */
   notePackOpened() {
     this.packsOpenedToday += 1;
+    this.lifetimePacksOpened += 1;
     bus.emit('board-progress-changed');
   }
 
@@ -1149,6 +1174,7 @@ class GameState {
       feeNames: dueFees.map((def) => def.name),
     };
     this.day += 1;
+    this.lifetimeDaysPlayed += 1;
     this.goldEarnedToday = 0;
     this.cardsSoldToday = 0;
     this.enemiesDefeatedToday = 0;
