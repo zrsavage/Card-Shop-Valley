@@ -239,9 +239,16 @@ function buildGolem(rand: () => number, body: string, accent: string, stage: num
 // is shared across all of that species' stages. The UI falls back through
 // stage art -> generic art -> the procedural SVG below when neither file
 // exists yet, so art can be rolled out incrementally.
+//
+// Deliberately relative (no leading slash): the game isn't always served
+// from a domain root — the published Artifact preview in particular hosts
+// index.html somewhere other than "/", so an absolute /card-art/... path
+// 404s there even when the file was uploaded right alongside it. A path
+// relative to index.html resolves correctly in both that and a normal
+// top-level deployment.
 export function cardArtImagePath(speciesId: string, stage?: number): string {
-  if (stage != null) return `/card-art/${speciesId}-${stage}.webp`;
-  return `/card-art/${speciesId}.webp`;
+  if (stage != null) return `card-art/${speciesId}-${stage}.webp`;
+  return `card-art/${speciesId}.webp`;
 }
 
 // Builds the `<img>` + procedural-fallback markup shared by every card-art

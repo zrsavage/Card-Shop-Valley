@@ -9,6 +9,10 @@ import type { Card } from './types';
 
 const CUSTOMER_DOOR_POS = { x: SHOP_DOOR_TRIGGER.x, y: 580 };
 
+/** Below this listed price, nobody bothers haggling — it's cheap enough
+ * that ringing it up is just a straight sale at the sticker price. */
+export const NO_HAGGLE_BELOW_PRICE = 50;
+
 /** How hard a given customer will haggle — rolled once per sale so two
  * customers buying the same card can behave completely differently. */
 export interface HaggleProfile {

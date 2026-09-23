@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { gameState, bus } from '../game/state';
-import { spawnCustomer, checkoutQueue, clearCheckoutQueue } from '../game/Customer';
+import { spawnCustomer, checkoutQueue, clearCheckoutQueue, completeCheckout, NO_HAGGLE_BELOW_PRICE } from '../game/Customer';
 import { COUNTER_POS, COUNTER_BEHIND_POS, SHOP_ENTRANCE_POS, SHOP_DOOR_TRIGGER, SHOP_SHELF_POSITIONS } from '../game/layout';
 import type { ShelfPosition } from '../game/layout';
 import { playerTextureKey, attachCircleBody, WalkAnimator } from '../game/pixelArt';
@@ -309,7 +309,9 @@ export default class ShopScene extends Phaser.Scene {
       const label =
         target.type === 'counter'
           ? checkoutQueue.length > 0
-            ? 'Press E: Ring Up Customer'
+            ? checkoutQueue[0].price < NO_HAGGLE_BELOW_PRICE
+              ? 'Press E: Quick Sale'
+              : 'Press E: Ring Up Customer'
             : 'Press E: Register'
           : 'Press E: Manage Shelf';
       this.promptText.setText(label).setPosition(target.x, target.y - 55).setVisible(true);
@@ -321,8 +323,14 @@ export default class ShopScene extends Phaser.Scene {
       if (!target) {
         bus.emit('open-menu');
       } else if (target.type === 'counter') {
-        if (checkoutQueue.length > 0) bus.emit('open-haggle', checkoutQueue[0].id);
-        else bus.emit('open-counter');
+        if (checkoutQueue.length > 0) {
+          const ticket = checkoutQueue[0];
+          // Not worth haggling over — ring it up at the sticker price outright.
+          if (ticket.price < NO_HAGGLE_BELOW_PRICE) completeCheckout(ticket.id, ticket.price);
+          else bus.emit('open-haggle', ticket.id);
+        } else {
+          bus.emit('open-counter');
+        }
       } else {
         bus.emit('open-shelf', target.id);
       }
