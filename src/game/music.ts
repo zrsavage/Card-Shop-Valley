@@ -1,12 +1,22 @@
 import { getCtx } from './audio';
 
-// Procedurally-generated ambient background music — same "placeholder now,
-// real assets later" philosophy as audio.ts's SFX and cardArt.ts's SVG
-// fallback creatures, since there's no music-generation tool available
-// either. Each scene gets its own slowly-evolving chord loop with a sparse
-// wandering melody on top, built from plain oscillators — no audio files,
-// no external dependencies, just enough harmonic movement that the valley
-// doesn't sit in dead silence between sound effects.
+// Background music, real-track-first: if public/music/<mood>.mp3 exists,
+// that plays, looped; if it 404s (no file dropped in yet), this falls back
+// to a procedurally-generated ambient loop for that scene — same fallback
+// shape as cardArt.ts's illustrated-art-first / procedural-SVG-fallback
+// chain. See public/music/README.md for exactly what file to add and where.
+//
+// Deliberately a relative path (no leading slash) — same reason as
+// cardArtImagePath(): the published Artifact preview doesn't always serve
+// index.html from a domain root, so an absolute /music/... path can 404
+// there even once the file exists right alongside it.
+const REAL_TRACK_PATH: Record<SceneMood, string> = {
+  shop: 'music/shop.mp3',
+  town: 'music/town.mp3',
+  wilds: 'music/wilds.mp3',
+  distributor: 'music/distributor.mp3',
+  generalStore: 'music/general-store.mp3',
+};
 
 export type SceneMood = 'shop' | 'town' | 'wilds' | 'distributor' | 'generalStore';
 
@@ -126,6 +136,13 @@ class MusicManager {
   private intervalId: ReturnType<typeof setInterval> | null = null;
   private muted = false;
   private volume = 0.5;
+  // Real-track state: cached <audio> elements (one per mood, created lazily
+  // and reused — a MediaElementAudioSourceNode can only ever be attached to
+  // an element once), which mood(s) have already 404'd and should just use
+  // the procedural loop from now on, and whichever element is playing now.
+  private realTrackEls = new Map<SceneMood, HTMLAudioElement>();
+  private realTrackFailed = new Set<SceneMood>();
+  private currentRealAudio: HTMLAudioElement | null = null;
 
   /** Called once at startup with the player's saved preference, before any
    * scene has had a chance to start a loop. */
@@ -175,10 +192,50 @@ class MusicManager {
     if (this.currentMood === mood) return;
     this.currentMood = mood;
     this.chordIndex = 0;
-    if (this.intervalId) clearInterval(this.intervalId);
+    if (this.intervalId) {
+      clearInterval(this.intervalId);
+      this.intervalId = null;
+    }
+    if (this.currentRealAudio) {
+      this.currentRealAudio.pause();
+      this.currentRealAudio = null;
+    }
     const ctx = this.ensureGraph();
     if (!ctx) return; // No Web Audio available — silently do nothing, same as SFX.
 
+    if (this.realTrackFailed.has(mood)) this.startProceduralLoop(mood);
+    else this.tryPlayRealTrack(mood, ctx);
+  }
+
+  /** Tries public/music/<mood>.mp3 first; falls back to the procedural loop
+   * the moment it's clear the file isn't there (a fired 'error' event, or a
+   * rejected play() — some browsers surface a missing file that way instead). */
+  private tryPlayRealTrack(mood: SceneMood, ctx: AudioContext) {
+    const fallback = () => {
+      this.realTrackFailed.add(mood);
+      if (this.currentMood === mood) this.startProceduralLoop(mood);
+    };
+    let el = this.realTrackEls.get(mood);
+    if (!el) {
+      el = new Audio(REAL_TRACK_PATH[mood]);
+      el.loop = true;
+      el.preload = 'auto';
+      el.addEventListener('error', fallback);
+      this.realTrackEls.set(mood, el);
+      try {
+        const source = ctx.createMediaElementSource(el);
+        source.connect(this.masterGain!);
+      } catch {
+        // If it can't be routed through the shared graph, let it play
+        // un-gained rather than breaking playback entirely.
+      }
+    }
+    this.currentRealAudio = el;
+    el.currentTime = 0;
+    el.play()?.catch(fallback);
+  }
+
+  private startProceduralLoop(mood: SceneMood) {
     const config = SCENE_MOODS[mood];
     const tick = () => this.playBar(mood, config);
     tick();
