@@ -517,8 +517,11 @@ html, body {
 .card-chip-small {
   /* A fixed width, not just a floor — .card-art-svg/.card-art-img otherwise
      size themselves off the browser's ~300px default for a replaced element
-     with no intrinsic size, ballooning the whole chip back up to full size. */
+     with no intrinsic size, ballooning the whole chip back up to full size.
+     min-width must be overridden too — .card-chip's own 108px floor wins
+     over this width otherwise, undoing the shrink entirely. */
   width: 76px;
+  min-width: 76px;
   padding: 3px;
   flex-shrink: 0;
 }

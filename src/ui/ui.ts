@@ -1609,7 +1609,9 @@ function bagTabHtml(): string {
   const body =
     gameState.inventory.length === 0
       ? `<p class="modal-sub">Your bag is empty. Buy or find a pack to fill it up.</p>`
-      : `<div class="reveal-grid">${gameState.inventory.map((c) => cardSlotHtml(c)).join('')}</div>`;
+      // Small chips, same as the post-reveal grid — a full-size card here
+      // only fit 1-2 per row and made a big haul a scroll-fest.
+      : `<div class="reveal-grid reveal-grid-small">${gameState.inventory.map((c) => cardSlotHtml(c, true)).join('')}</div>`;
 
   return `
     <p class="modal-sub">${gameState.inventory.length} card${gameState.inventory.length === 1 ? '' : 's'} on hand. Place them on a shelf, gift one to a townsfolk, or just browse.</p>
@@ -1943,7 +1945,9 @@ const MENU_TABS: { id: MenuTab; label: string }[] = [
   { id: 'day', label: '&#9203; Day' },
 ];
 
-let activeMenuTab: MenuTab = 'bag';
+// Lands on Day (status/energy/end-day) first, not the card gallery — opening
+// the Menu to check on things or end the day shouldn't dump you into the Bag.
+let activeMenuTab: MenuTab = 'day';
 
 function openMenuModal(tab: MenuTab = activeMenuTab) {
   activeMenuTab = tab;
