@@ -131,7 +131,7 @@ export default class ShopScene extends Phaser.Scene {
   }
 
   private onCosmeticsChanged() {
-    this.player.setTexture(playerTextureKey(this, gameState.equippedOutfitColor, 32, this.walkAnim.frame));
+    this.player.setTexture(playerTextureKey(this, gameState.equippedOutfitColor, 32));
     this.refreshDecor();
   }
 
@@ -235,7 +235,7 @@ export default class ShopScene extends Phaser.Scene {
   update(_time: number, delta: number) {
     if (!gameState.paused) {
       const moving = this.handleMovement();
-      this.walkAnim.update(this, this.player, moving, delta, playerTextureKey, gameState.equippedOutfitColor, 32);
+      this.walkAnim.update(this.player, moving, delta);
       this.tickFootsteps(moving, delta);
       this.handleInteract();
       this.handleDoorTrigger();

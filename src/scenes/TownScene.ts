@@ -53,7 +53,6 @@ interface NpcVisual {
   id: string;
   sprite: Phaser.GameObjects.Sprite;
   label: Phaser.GameObjects.Text;
-  color: number;
 }
 
 /** A nameless, non-interactive extra — just there so the town reads as a
@@ -64,7 +63,6 @@ interface AmbientVillager {
   sprite: Phaser.GameObjects.Sprite;
   wanderTarget: { x: number; y: number };
   speed: number;
-  color: number;
   walkAnim: WalkAnimator;
 }
 
@@ -213,7 +211,7 @@ export default class TownScene extends Phaser.Scene {
         .text(spot.x, spot.y - 24, npc.name, { fontSize: '11px', color: '#fff8ec', backgroundColor: '#00000088', padding: { x: 4, y: 1 } })
         .setOrigin(0.5)
         .setDepth(4);
-      this.npcVisuals.push({ id: npc.id, sprite, label, color: npc.color });
+      this.npcVisuals.push({ id: npc.id, sprite, label });
     }
 
     // Ambient villagers — nameless extras that just wander forever, so the
@@ -231,7 +229,7 @@ export default class TownScene extends Phaser.Scene {
       this.physics.add.collider(sprite, townHallBody);
       for (const houseBody of backgroundHouseBodies) this.physics.add.collider(sprite, houseBody);
       for (const guardBody of guardBodies) this.physics.add.collider(sprite, guardBody);
-      this.villagers.push({ sprite, wanderTarget: { x, y }, speed: Phaser.Math.Between(28, 48), color, walkAnim: new WalkAnimator() });
+      this.villagers.push({ sprite, wanderTarget: { x, y }, speed: Phaser.Math.Between(28, 48), walkAnim: new WalkAnimator() });
     }
 
     // Player — arrives at the door leading back from wherever they came from.
@@ -293,7 +291,7 @@ export default class TownScene extends Phaser.Scene {
   }
 
   private onCosmeticsChanged() {
-    this.player.setTexture(playerTextureKey(this, gameState.equippedOutfitColor, 32, this.walkAnim.frame));
+    this.player.setTexture(playerTextureKey(this, gameState.equippedOutfitColor, 32));
   }
 
   /** A straight dirt-path strip from the fountain out to a destination
@@ -323,7 +321,7 @@ export default class TownScene extends Phaser.Scene {
     const child = this.add.sprite(CHILD_START_POS.x, CHILD_START_POS.y, texture).setDepth(4);
     // Never explicitly stopped — the child is destroyed at the end of the
     // vignette anyway, which tears the walk timer down with it.
-    attachWalkAnimation(this, child, humanoidTextureKey, color, 18);
+    attachWalkAnimation(this, child);
 
     this.tweens.add({
       targets: child,
@@ -393,7 +391,7 @@ export default class TownScene extends Phaser.Scene {
     for (const visual of this.npcVisuals) {
       const def = NPCS.find((n) => n.id === visual.id)!;
       const spot = isAfternoon ? def.afternoonSpot : def.morningSpot;
-      const stopWalking = attachWalkAnimation(this, visual.sprite, humanoidTextureKey, visual.color, 28);
+      const stopWalking = attachWalkAnimation(this, visual.sprite);
       this.tweens.add({
         targets: visual.sprite,
         x: spot.x,
@@ -415,14 +413,14 @@ export default class TownScene extends Phaser.Scene {
       }
       const angle = Phaser.Math.Angle.Between(v.sprite.x, v.sprite.y, v.wanderTarget.x, v.wanderTarget.y);
       body.setVelocity(Math.cos(angle) * v.speed, Math.sin(angle) * v.speed);
-      v.walkAnim.update(this, v.sprite, true, delta, humanoidTextureKey, v.color, 26);
+      v.walkAnim.update(v.sprite, true, delta);
     }
   }
 
   update(_time: number, delta: number) {
     if (!gameState.paused) {
       const moving = this.handleMovement();
-      this.walkAnim.update(this, this.player, moving, delta, playerTextureKey, gameState.equippedOutfitColor, 32);
+      this.walkAnim.update(this.player, moving, delta);
       this.tickFootsteps(moving, delta);
       this.handleInteract();
       this.handleDoorTrigger();

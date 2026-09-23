@@ -105,45 +105,16 @@ function colorFor(ch: string, bodyColor: number, bodyShade: number, bodyLight: n
   }
 }
 
-// A 3-frame walk cycle (idle, left-leg-lifted, right-leg-lifted), cycled
-// idle-left-idle-right by tickWalkFrame below — the classic top-down RPG
-// gait. Each "lift" frame is derived from the base grid by recoloring just
-// its calf/foot rows (the lifted leg's calf takes the foot's color and its
-// foot disappears), so every frame stays the exact same canvas size and
-// swapping textures mid-walk never shifts or resizes the sprite.
-export type WalkFrame = 0 | 1 | 2;
-
-function withLegLift(grid: Grid, calfRow: number, footRow: number, leg: 'left' | 'right'): Grid {
-  const calf = grid[calfRow].split('');
-  const foot = grid[footRow].split('');
-  const legRanges: [number, number][] = [];
-  let start = -1;
-  for (let i = 0; i < foot.length; i++) {
-    if (foot[i] === 'F' && start < 0) start = i;
-    if (foot[i] !== 'F' && start >= 0) {
-      legRanges.push([start, i - 1]);
-      start = -1;
-    }
-  }
-  if (start >= 0) legRanges.push([start, foot.length - 1]);
-  const [from, to] = leg === 'left' ? legRanges[0] : legRanges[1];
-  for (let i = from; i <= to; i++) {
-    calf[i] = 'F';
-    foot[i] = '.';
-  }
-  const out = [...grid];
-  out[calfRow] = calf.join('');
-  out[footRow] = foot.join('');
-  return out;
-}
-
-const HUMANOID_FRAMES: [Grid, Grid, Grid] = [HUMANOID, withLegLift(HUMANOID, 14, 15, 'left'), withLegLift(HUMANOID, 14, 15, 'right')];
-const PLAYER_FRAMES: [Grid, Grid, Grid] = [PLAYER, withLegLift(PLAYER, 15, 16, 'left'), withLegLift(PLAYER, 15, 16, 'right')];
-
-// idle -> left lift -> idle -> right lift -> repeat, so both feet visibly
-// return to the ground between steps instead of the legs just swapping.
-const WALK_CYCLE: WalkFrame[] = [0, 1, 0, 2];
-const WALK_FRAME_INTERVAL_MS = 160;
+// A side-to-side walking waddle — instead of swapping to a different pose,
+// the whole sprite tilts left, back to upright, then tilts right, repeat.
+// At each extreme it visibly reads as leaning/turning into that direction
+// rather than just bouncing a foot up and down. Since it's a rotation
+// applied to the sprite itself (not baked into a texture), it costs nothing
+// extra to generate and never disturbs the (rotation-invariant) circular
+// hitbox underneath.
+const WALK_TILT_CYCLE = [0, -1, 0, 1];
+const WALK_TILT_DEGREES = 16;
+const WALK_TILT_INTERVAL_MS = 160;
 
 export interface WalkAnimState {
   step: number;
@@ -154,24 +125,24 @@ export function newWalkAnimState(): WalkAnimState {
   return { step: 0, timer: 0 };
 }
 
-/** Advances a sprite's walk-cycle step while `moving` is true, snapping
- * straight back to the idle frame the instant it isn't. Returns the frame
+/** Advances a sprite's waddle step while `moving` is true, snapping
+ * straight back upright the instant it isn't. Returns the angle (degrees)
  * to display and whether it's different from last call, so the caller only
- * pays for a setTexture() when the frame actually changes. */
-export function tickWalkFrame(state: WalkAnimState, moving: boolean, deltaMs: number): { frame: WalkFrame; changed: boolean } {
+ * pays for a setAngle() when the pose actually changes. */
+export function tickWalkFrame(state: WalkAnimState, moving: boolean, deltaMs: number): { angle: number; changed: boolean } {
   if (!moving) {
     const changed = state.step !== 0;
     state.step = 0;
     state.timer = 0;
-    return { frame: WALK_CYCLE[0], changed };
+    return { angle: 0, changed };
   }
   state.timer += deltaMs;
-  if (state.timer >= WALK_FRAME_INTERVAL_MS) {
-    state.timer -= WALK_FRAME_INTERVAL_MS;
-    state.step = (state.step + 1) % WALK_CYCLE.length;
-    return { frame: WALK_CYCLE[state.step], changed: true };
+  if (state.timer >= WALK_TILT_INTERVAL_MS) {
+    state.timer -= WALK_TILT_INTERVAL_MS;
+    state.step = (state.step + 1) % WALK_TILT_CYCLE.length;
+    return { angle: WALK_TILT_CYCLE[state.step] * WALK_TILT_DEGREES, changed: true };
   }
-  return { frame: WALK_CYCLE[state.step], changed: false };
+  return { angle: WALK_TILT_CYCLE[state.step] * WALK_TILT_DEGREES, changed: false };
 }
 
 function buildTexture(scene: Phaser.Scene, key: string, grid: Grid, bodyColor: number, pixelSize: number): string {
@@ -194,20 +165,19 @@ function buildTexture(scene: Phaser.Scene, key: string, grid: Grid, bodyColor: n
   return key;
 }
 
-/** targetDiameter roughly sizes the sprite — its physics circle is separate, see attachCircleBody.
- * frame picks the walk-cycle pose (0 idle, 1/2 mid-stride) — see tickWalkFrame. */
-export function humanoidTextureKey(scene: Phaser.Scene, bodyColor: number, targetDiameter: number, frame: WalkFrame = 0): string {
+/** targetDiameter roughly sizes the sprite — its physics circle is separate, see attachCircleBody. */
+export function humanoidTextureKey(scene: Phaser.Scene, bodyColor: number, targetDiameter: number): string {
   const pixelSize = Math.max(2, Math.round(targetDiameter / HUMANOID[0].length));
-  const key = `px-humanoid-${bodyColor.toString(16)}-${pixelSize}-f${frame}`;
-  return buildTexture(scene, key, HUMANOID_FRAMES[frame], bodyColor, pixelSize);
+  const key = `px-humanoid-${bodyColor.toString(16)}-${pixelSize}`;
+  return buildTexture(scene, key, HUMANOID, bodyColor, pixelSize);
 }
 
 /** The player's own sprite — hat and shirt both pick up the equipped
  * outfit color, so buying a new outfit recolors more than just the torso. */
-export function playerTextureKey(scene: Phaser.Scene, bodyColor: number, targetDiameter: number, frame: WalkFrame = 0): string {
+export function playerTextureKey(scene: Phaser.Scene, bodyColor: number, targetDiameter: number): string {
   const pixelSize = Math.max(2, Math.round(targetDiameter / PLAYER[0].length));
-  const key = `px-player-${bodyColor.toString(16)}-${pixelSize}-f${frame}`;
-  return buildTexture(scene, key, PLAYER_FRAMES[frame], bodyColor, pixelSize);
+  const key = `px-player-${bodyColor.toString(16)}-${pixelSize}`;
+  return buildTexture(scene, key, PLAYER, bodyColor, pixelSize);
 }
 
 export function monsterTextureKey(scene: Phaser.Scene, bodyColor: number, targetDiameter: number): string {
@@ -225,44 +195,41 @@ export function attachCircleBody(sprite: Phaser.GameObjects.Sprite, radius: numb
   body.setCircle(radius, sprite.width / 2 - radius, sprite.height / 2 - radius);
 }
 
-type TextureKeyFn = (scene: Phaser.Scene, color: number, size: number, frame: WalkFrame) => string;
-
-/** Drives the walk cycle for a sprite whose movement is polled every frame
- * (Arcade velocity — the player, or anything else with a per-frame update
- * loop) rather than driven by a tween. Call .update() once per frame with
- * the current moving state; it only touches the sprite's texture on the
- * frames where the pose actually changes. */
+/** Drives the walking waddle for a sprite whose movement is polled every
+ * frame (Arcade velocity — the player, or anything else with a per-frame
+ * update loop) rather than driven by a tween. Call .update() once per frame
+ * with the current moving state; it only touches the sprite's angle on the
+ * frames where the tilt actually changes. */
 export class WalkAnimator {
   private state: WalkAnimState = newWalkAnimState();
-  frame: WalkFrame = 0;
+  angle = 0;
 
-  update(scene: Phaser.Scene, sprite: Phaser.GameObjects.Sprite, moving: boolean, deltaMs: number, textureKeyFn: TextureKeyFn, color: number, size: number) {
+  update(sprite: Phaser.GameObjects.Sprite, moving: boolean, deltaMs: number) {
     const result = tickWalkFrame(this.state, moving, deltaMs);
-    this.frame = result.frame;
-    if (result.changed) sprite.setTexture(textureKeyFn(scene, color, size, result.frame));
+    this.angle = result.angle;
+    if (result.changed) sprite.setAngle(result.angle);
   }
 }
 
-/** Drives the walk cycle for a sprite whose movement is a tween instead of
- * a per-frame poll (ambient villagers wandering forever, an NPC's
+/** Drives the walking waddle for a sprite whose movement is a tween instead
+ * of a per-frame poll (ambient villagers wandering forever, an NPC's
  * once-in-a-while walk to their afternoon spot, a customer crossing the
- * shop floor) — starts cycling immediately and keeps going until the
+ * shop floor) — starts tilting immediately and keeps going until the
  * returned stop function is called (or the sprite is destroyed), at which
- * point it snaps back to the idle frame. */
-export function attachWalkAnimation(scene: Phaser.Scene, sprite: Phaser.GameObjects.Sprite, textureKeyFn: TextureKeyFn, color: number, size: number): () => void {
+ * point it snaps back upright. */
+export function attachWalkAnimation(scene: Phaser.Scene, sprite: Phaser.GameObjects.Sprite): () => void {
   const state = newWalkAnimState();
   const timer = scene.time.addEvent({
-    delay: WALK_FRAME_INTERVAL_MS,
+    delay: WALK_TILT_INTERVAL_MS,
     loop: true,
     callback: () => {
-      const { frame, changed } = tickWalkFrame(state, true, WALK_FRAME_INTERVAL_MS);
-      if (changed) sprite.setTexture(textureKeyFn(scene, color, size, frame));
+      const { angle, changed } = tickWalkFrame(state, true, WALK_TILT_INTERVAL_MS);
+      if (changed) sprite.setAngle(angle);
     },
   });
   sprite.once(Phaser.GameObjects.Events.DESTROY, () => timer.remove());
   return () => {
     timer.remove();
-    const { frame, changed } = tickWalkFrame(state, false, 0);
-    if (changed && sprite.active) sprite.setTexture(textureKeyFn(scene, color, size, frame));
+    if (sprite.active) sprite.setAngle(0);
   };
 }

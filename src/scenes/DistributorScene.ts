@@ -82,7 +82,7 @@ export default class DistributorScene extends Phaser.Scene {
   }
 
   private onCosmeticsChanged() {
-    this.player.setTexture(playerTextureKey(this, gameState.equippedOutfitColor, 32, this.walkAnim.frame));
+    this.player.setTexture(playerTextureKey(this, gameState.equippedOutfitColor, 32));
   }
 
   private onPausedChanged(paused: boolean) {
@@ -95,7 +95,7 @@ export default class DistributorScene extends Phaser.Scene {
       return;
     }
     const moving = this.handleMovement();
-    this.walkAnim.update(this, this.player, moving, delta, playerTextureKey, gameState.equippedOutfitColor, 32);
+    this.walkAnim.update(this.player, moving, delta);
     this.tickFootsteps(moving, delta);
     this.handleInteract();
     this.handleDoorTrigger();

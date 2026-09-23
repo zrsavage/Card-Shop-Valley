@@ -189,7 +189,7 @@ function rollHaggleProfile(archetype: 'normal' | 'bulkBuyer' | 'bigSpender'): Ha
 // wandering shelves they can no longer afford anything from.
 const MIN_BROWSE_BUDGET = 5;
 
-function tweenTo(scene: Phaser.Scene, target: Phaser.GameObjects.Sprite, color: number, x: number, y: number, onDone: () => void) {
+function tweenTo(scene: Phaser.Scene, target: Phaser.GameObjects.Sprite, x: number, y: number, onDone: () => void) {
   const dist = Phaser.Math.Distance.Between(target.x, target.y, x, y);
   const duration = Math.max(200, (dist / WALK_SPEED) * 1000);
   // A faint, periodic step sound while actually walking somewhere — skipped
@@ -201,7 +201,7 @@ function tweenTo(scene: Phaser.Scene, target: Phaser.GameObjects.Sprite, color: 
   if (dist > 4) {
     stepEvent = scene.time.addEvent({ delay: CUSTOMER_STEP_INTERVAL_MS, loop: true, callback: playFootstepFaint });
     target.once(Phaser.GameObjects.Events.DESTROY, () => stepEvent?.remove());
-    stopWalking = attachWalkAnimation(scene, target, humanoidTextureKey, color, CUSTOMER_SPRITE_SIZE);
+    stopWalking = attachWalkAnimation(scene, target);
   }
   scene.tweens.add({
     targets: target,
@@ -265,7 +265,7 @@ export function spawnCustomer(scene: Phaser.Scene, stockedShelves: ShelfTarget[]
     const target = visitPlan[i];
     const approachX = target.x + Phaser.Math.Between(-20, 20);
     const approachY = target.y + 45;
-    tweenTo(scene, sprite, color, approachX, approachY, () => {
+    tweenTo(scene, sprite, approachX, approachY, () => {
       scene.time.delayedCall(200, () => resolveVisit(target, i));
     });
   }
@@ -333,7 +333,7 @@ export function spawnCustomer(scene: Phaser.Scene, stockedShelves: ShelfTarget[]
     const queueIdx = checkoutQueue.length;
     const targetX = REGISTER_QUEUE_POS.x;
     const targetY = REGISTER_QUEUE_POS.y + queueIdx * REGISTER_QUEUE_SPACING;
-    tweenTo(scene, sprite, color, targetX, targetY, () => {
+    tweenTo(scene, sprite, targetX, targetY, () => {
       checkoutQueue.push({ id: nextTicketId++, scene, sprite, shelfId, card, price, archetype, haggle: rollHaggleProfile(archetype), resolve: onDone });
     });
   }
@@ -343,7 +343,7 @@ export function spawnCustomer(scene: Phaser.Scene, stockedShelves: ShelfTarget[]
       showSpeechText(scene, sprite.x, sprite.y - 20, pick(['Thanks!', 'Pleasure doing business!', 'Love this find!']), '#2b8a3e');
     }
     scene.time.delayedCall(LEAVE_PAUSE_MS, () => {
-      tweenTo(scene, sprite, color, CUSTOMER_DOOR_POS.x, CUSTOMER_DOOR_POS.y, () => sprite.destroy());
+      tweenTo(scene, sprite, CUSTOMER_DOOR_POS.x, CUSTOMER_DOOR_POS.y, () => sprite.destroy());
     });
   }
 

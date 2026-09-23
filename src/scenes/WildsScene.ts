@@ -184,7 +184,7 @@ export default class WildsScene extends Phaser.Scene {
   }
 
   private onCosmeticsChanged() {
-    this.player.setTexture(playerTextureKey(this, gameState.equippedOutfitColor, 32, this.walkAnim.frame));
+    this.player.setTexture(playerTextureKey(this, gameState.equippedOutfitColor, 32));
   }
 
   update(time: number, delta: number) {
@@ -195,7 +195,7 @@ export default class WildsScene extends Phaser.Scene {
     if (this.attackCooldownRemaining > 0) this.attackCooldownRemaining -= delta;
 
     const moving = this.handleMovement();
-    this.walkAnim.update(this, this.player, moving, delta, playerTextureKey, gameState.equippedOutfitColor, 32);
+    this.walkAnim.update(this.player, moving, delta);
     this.tickFootsteps(moving, delta);
     this.handleAttack();
     this.tickRangedAttack(delta);
