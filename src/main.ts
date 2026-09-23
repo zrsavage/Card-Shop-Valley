@@ -9,6 +9,7 @@ import { initUI, showIntroModal } from './ui/ui';
 import { loadGame, initAutosave } from './game/save';
 import { gameState, bus } from './game/state';
 import { checkoutQueue } from './game/Customer';
+import { playerTextureKey, humanoidTextureKey } from './game/pixelArt';
 
 const isBrandNewGame = !loadGame();
 initAutosave();
@@ -35,12 +36,21 @@ if (isBrandNewGame) showIntroModal();
 if (import.meta.env.DEV) {
   (
     window as unknown as {
-      __debug: { gameState: typeof gameState; bus: typeof bus; game: Phaser.Game; checkoutQueue: typeof checkoutQueue };
+      __debug: {
+        gameState: typeof gameState;
+        bus: typeof bus;
+        game: Phaser.Game;
+        checkoutQueue: typeof checkoutQueue;
+        playerTextureKey: typeof playerTextureKey;
+        humanoidTextureKey: typeof humanoidTextureKey;
+      };
     }
   ).__debug = {
     gameState,
     bus,
     game,
     checkoutQueue,
+    playerTextureKey,
+    humanoidTextureKey,
   };
 }

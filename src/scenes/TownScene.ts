@@ -16,7 +16,7 @@ import {
   TOWN_GENERAL_STORE_DOOR_POS,
 } from '../game/layout';
 import type { Season } from '../game/types';
-import { humanoidTextureKey, playerTextureKey, attachCircleBody } from '../game/pixelArt';
+import { humanoidTextureKey, playerTextureKey, attachCircleBody, WalkAnimator, attachWalkAnimation } from '../game/pixelArt';
 import { grassTextureKey, woodTextureKey, drawTownHall, drawBackgroundHouse, drawFountain, type FountainVisual } from '../game/sceneryArt';
 import { playFootstep } from '../game/audio';
 
@@ -53,6 +53,7 @@ interface NpcVisual {
   id: string;
   sprite: Phaser.GameObjects.Sprite;
   label: Phaser.GameObjects.Text;
+  color: number;
 }
 
 /** A nameless, non-interactive extra — just there so the town reads as a
@@ -63,6 +64,8 @@ interface AmbientVillager {
   sprite: Phaser.GameObjects.Sprite;
   wanderTarget: { x: number; y: number };
   speed: number;
+  color: number;
+  walkAnim: WalkAnimator;
 }
 
 export default class TownScene extends Phaser.Scene {
@@ -79,6 +82,7 @@ export default class TownScene extends Phaser.Scene {
   private merchantVisuals: Phaser.GameObjects.GameObject[] = [];
   private merchantLabel!: Phaser.GameObjects.Text;
   private stepTimer = 0;
+  private walkAnim = new WalkAnimator();
 
   constructor() {
     super('Town');
@@ -209,7 +213,7 @@ export default class TownScene extends Phaser.Scene {
         .text(spot.x, spot.y - 24, npc.name, { fontSize: '11px', color: '#fff8ec', backgroundColor: '#00000088', padding: { x: 4, y: 1 } })
         .setOrigin(0.5)
         .setDepth(4);
-      this.npcVisuals.push({ id: npc.id, sprite, label });
+      this.npcVisuals.push({ id: npc.id, sprite, label, color: npc.color });
     }
 
     // Ambient villagers — nameless extras that just wander forever, so the
@@ -227,7 +231,7 @@ export default class TownScene extends Phaser.Scene {
       this.physics.add.collider(sprite, townHallBody);
       for (const houseBody of backgroundHouseBodies) this.physics.add.collider(sprite, houseBody);
       for (const guardBody of guardBodies) this.physics.add.collider(sprite, guardBody);
-      this.villagers.push({ sprite, wanderTarget: { x, y }, speed: Phaser.Math.Between(28, 48) });
+      this.villagers.push({ sprite, wanderTarget: { x, y }, speed: Phaser.Math.Between(28, 48), color, walkAnim: new WalkAnimator() });
     }
 
     // Player — arrives at the door leading back from wherever they came from.
@@ -289,7 +293,7 @@ export default class TownScene extends Phaser.Scene {
   }
 
   private onCosmeticsChanged() {
-    this.player.setTexture(playerTextureKey(this, gameState.equippedOutfitColor, 32));
+    this.player.setTexture(playerTextureKey(this, gameState.equippedOutfitColor, 32, this.walkAnim.frame));
   }
 
   /** A straight dirt-path strip from the fountain out to a destination
@@ -317,6 +321,9 @@ export default class TownScene extends Phaser.Scene {
     const color = CHILD_COLORS[Math.floor(Math.random() * CHILD_COLORS.length)];
     const texture = humanoidTextureKey(this, color, 18);
     const child = this.add.sprite(CHILD_START_POS.x, CHILD_START_POS.y, texture).setDepth(4);
+    // Never explicitly stopped — the child is destroyed at the end of the
+    // vignette anyway, which tears the walk timer down with it.
+    attachWalkAnimation(this, child, humanoidTextureKey, color, 18);
 
     this.tweens.add({
       targets: child,
@@ -386,6 +393,7 @@ export default class TownScene extends Phaser.Scene {
     for (const visual of this.npcVisuals) {
       const def = NPCS.find((n) => n.id === visual.id)!;
       const spot = isAfternoon ? def.afternoonSpot : def.morningSpot;
+      const stopWalking = attachWalkAnimation(this, visual.sprite, humanoidTextureKey, visual.color, 28);
       this.tweens.add({
         targets: visual.sprite,
         x: spot.x,
@@ -393,11 +401,12 @@ export default class TownScene extends Phaser.Scene {
         duration: NPC_TRANSITION_MS,
         ease: 'Sine.inOut',
         onUpdate: () => visual.label.setPosition(visual.sprite.x, visual.sprite.y - 24),
+        onComplete: stopWalking,
       });
     }
   }
 
-  private updateVillagers() {
+  private updateVillagers(delta: number) {
     for (const v of this.villagers) {
       const body = v.sprite.body as Phaser.Physics.Arcade.Body;
       const d = Phaser.Math.Distance.Between(v.sprite.x, v.sprite.y, v.wanderTarget.x, v.wanderTarget.y);
@@ -406,12 +415,14 @@ export default class TownScene extends Phaser.Scene {
       }
       const angle = Phaser.Math.Angle.Between(v.sprite.x, v.sprite.y, v.wanderTarget.x, v.wanderTarget.y);
       body.setVelocity(Math.cos(angle) * v.speed, Math.sin(angle) * v.speed);
+      v.walkAnim.update(this, v.sprite, true, delta, humanoidTextureKey, v.color, 26);
     }
   }
 
   update(_time: number, delta: number) {
     if (!gameState.paused) {
       const moving = this.handleMovement();
+      this.walkAnim.update(this, this.player, moving, delta, playerTextureKey, gameState.equippedOutfitColor, 32);
       this.tickFootsteps(moving, delta);
       this.handleInteract();
       this.handleDoorTrigger();
@@ -420,7 +431,7 @@ export default class TownScene extends Phaser.Scene {
       gameState.tickEnergy(delta);
       gameState.tickShopAutomation(delta);
       this.updateNpcPositions();
-      this.updateVillagers();
+      this.updateVillagers(delta);
     } else {
       this.promptText.setVisible(false);
     }

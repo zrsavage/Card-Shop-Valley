@@ -2,7 +2,7 @@ import Phaser from 'phaser';
 import { gameState } from './state';
 import { SHOP_DOOR_TRIGGER, REGISTER_QUEUE_POS, REGISTER_QUEUE_SPACING } from './layout';
 import { showFloatingText, showSpeechText } from './fx';
-import { humanoidTextureKey } from './pixelArt';
+import { humanoidTextureKey, attachWalkAnimation } from './pixelArt';
 import { PRICE_REACTION_TIERS, buyChanceFor } from './pricing';
 import { playCoin, playFootstepFaint } from './audio';
 import type { Card } from './types';
@@ -94,6 +94,7 @@ export function clearCheckoutQueue() {
   checkoutQueue.length = 0;
 }
 const CUSTOMER_COLORS = [0x4cc9f0, 0xf72585, 0x90be6d, 0xf9844a, 0x9b5de5, 0x577590];
+const CUSTOMER_SPRITE_SIZE = 28;
 const WALK_SPEED = 130; // px/sec
 
 // Some customers never intend to buy anything — they just came to look.
@@ -188,7 +189,7 @@ function rollHaggleProfile(archetype: 'normal' | 'bulkBuyer' | 'bigSpender'): Ha
 // wandering shelves they can no longer afford anything from.
 const MIN_BROWSE_BUDGET = 5;
 
-function tweenTo(scene: Phaser.Scene, target: Phaser.GameObjects.Sprite, x: number, y: number, onDone: () => void) {
+function tweenTo(scene: Phaser.Scene, target: Phaser.GameObjects.Sprite, color: number, x: number, y: number, onDone: () => void) {
   const dist = Phaser.Math.Distance.Between(target.x, target.y, x, y);
   const duration = Math.max(200, (dist / WALK_SPEED) * 1000);
   // A faint, periodic step sound while actually walking somewhere — skipped
@@ -196,9 +197,11 @@ function tweenTo(scene: Phaser.Scene, target: Phaser.GameObjects.Sprite, x: numb
   // event too, since a customer can be force-removed (day ending) mid-walk,
   // which stops the tween without necessarily firing its onComplete.
   let stepEvent: Phaser.Time.TimerEvent | null = null;
+  let stopWalking: (() => void) | null = null;
   if (dist > 4) {
     stepEvent = scene.time.addEvent({ delay: CUSTOMER_STEP_INTERVAL_MS, loop: true, callback: playFootstepFaint });
     target.once(Phaser.GameObjects.Events.DESTROY, () => stepEvent?.remove());
+    stopWalking = attachWalkAnimation(scene, target, humanoidTextureKey, color, CUSTOMER_SPRITE_SIZE);
   }
   scene.tweens.add({
     targets: target,
@@ -208,6 +211,7 @@ function tweenTo(scene: Phaser.Scene, target: Phaser.GameObjects.Sprite, x: numb
     ease: 'Sine.inOut',
     onComplete: () => {
       stepEvent?.remove();
+      stopWalking?.();
       onDone();
     },
   });
@@ -231,7 +235,7 @@ function rollArchetype(): 'normal' | 'bulkBuyer' | 'bigSpender' {
 export function spawnCustomer(scene: Phaser.Scene, stockedShelves: ShelfTarget[]) {
   if (stockedShelves.length === 0) return;
   const color = Phaser.Utils.Array.GetRandom(CUSTOMER_COLORS);
-  const texture = humanoidTextureKey(scene, color, 28);
+  const texture = humanoidTextureKey(scene, color, CUSTOMER_SPRITE_SIZE);
   const sprite = scene.add.sprite(CUSTOMER_DOOR_POS.x, CUSTOMER_DOOR_POS.y, texture).setDepth(4);
   (sprite as any).__customer = true;
 
@@ -261,7 +265,7 @@ export function spawnCustomer(scene: Phaser.Scene, stockedShelves: ShelfTarget[]
     const target = visitPlan[i];
     const approachX = target.x + Phaser.Math.Between(-20, 20);
     const approachY = target.y + 45;
-    tweenTo(scene, sprite, approachX, approachY, () => {
+    tweenTo(scene, sprite, color, approachX, approachY, () => {
       scene.time.delayedCall(200, () => resolveVisit(target, i));
     });
   }
@@ -329,7 +333,7 @@ export function spawnCustomer(scene: Phaser.Scene, stockedShelves: ShelfTarget[]
     const queueIdx = checkoutQueue.length;
     const targetX = REGISTER_QUEUE_POS.x;
     const targetY = REGISTER_QUEUE_POS.y + queueIdx * REGISTER_QUEUE_SPACING;
-    tweenTo(scene, sprite, targetX, targetY, () => {
+    tweenTo(scene, sprite, color, targetX, targetY, () => {
       checkoutQueue.push({ id: nextTicketId++, scene, sprite, shelfId, card, price, archetype, haggle: rollHaggleProfile(archetype), resolve: onDone });
     });
   }
@@ -339,7 +343,7 @@ export function spawnCustomer(scene: Phaser.Scene, stockedShelves: ShelfTarget[]
       showSpeechText(scene, sprite.x, sprite.y - 20, pick(['Thanks!', 'Pleasure doing business!', 'Love this find!']), '#2b8a3e');
     }
     scene.time.delayedCall(LEAVE_PAUSE_MS, () => {
-      tweenTo(scene, sprite, CUSTOMER_DOOR_POS.x, CUSTOMER_DOOR_POS.y, () => sprite.destroy());
+      tweenTo(scene, sprite, color, CUSTOMER_DOOR_POS.x, CUSTOMER_DOOR_POS.y, () => sprite.destroy());
     });
   }
 

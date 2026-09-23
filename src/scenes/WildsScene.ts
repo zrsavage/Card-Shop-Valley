@@ -12,7 +12,7 @@ import { showFloatingText, showBannerText } from '../game/fx';
 import { ZONE_DEFS, rollPackDrop, BOSS_KILL_THRESHOLD, type EnemyDef, type ZoneDef, type BossSpecialAttack } from '../game/combat';
 import { PACKS } from '../game/packs';
 import { WILDS_FROM_TOWN_POS, WILDS_TO_TOWN_TRIGGER } from '../game/layout';
-import { playerTextureKey, monsterTextureKey, attachCircleBody } from '../game/pixelArt';
+import { playerTextureKey, monsterTextureKey, attachCircleBody, WalkAnimator } from '../game/pixelArt';
 import { grassTextureKey, stoneGroundTextureKey } from '../game/sceneryArt';
 import { playHit, playPlayerHurt, playLegendary, playFootstep } from '../game/audio';
 
@@ -85,6 +85,7 @@ export default class WildsScene extends Phaser.Scene {
   private killCount = 0;
   private bossSpawned = false;
   private stepTimer = 0;
+  private walkAnim = new WalkAnimator();
   /** Radians; drives the directional melee cone. Kept from the last frame
    * with movement input, so standing still still swings the way you faced. */
   private facingAngle = -Math.PI / 2;
@@ -183,7 +184,7 @@ export default class WildsScene extends Phaser.Scene {
   }
 
   private onCosmeticsChanged() {
-    this.player.setTexture(playerTextureKey(this, gameState.equippedOutfitColor, 32));
+    this.player.setTexture(playerTextureKey(this, gameState.equippedOutfitColor, 32, this.walkAnim.frame));
   }
 
   update(time: number, delta: number) {
@@ -194,6 +195,7 @@ export default class WildsScene extends Phaser.Scene {
     if (this.attackCooldownRemaining > 0) this.attackCooldownRemaining -= delta;
 
     const moving = this.handleMovement();
+    this.walkAnim.update(this, this.player, moving, delta, playerTextureKey, gameState.equippedOutfitColor, 32);
     this.tickFootsteps(moving, delta);
     this.handleAttack();
     this.tickRangedAttack(delta);

@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { gameState, bus } from '../game/state';
 import { GENERAL_STORE_COUNTER_POS, GENERAL_STORE_ENTRANCE_POS, GENERAL_STORE_DOOR_TRIGGER } from '../game/layout';
-import { playerTextureKey, attachCircleBody } from '../game/pixelArt';
+import { playerTextureKey, attachCircleBody, WalkAnimator } from '../game/pixelArt';
 import { woodTextureKey } from '../game/sceneryArt';
 import { playFootstep } from '../game/audio';
 
@@ -18,6 +18,7 @@ export default class GeneralStoreScene extends Phaser.Scene {
   private interactKey!: Phaser.Input.Keyboard.Key;
   private promptText!: Phaser.GameObjects.Text;
   private stepTimer = 0;
+  private walkAnim = new WalkAnimator();
 
   constructor() {
     super('GeneralStore');
@@ -81,7 +82,7 @@ export default class GeneralStoreScene extends Phaser.Scene {
   }
 
   private onCosmeticsChanged() {
-    this.player.setTexture(playerTextureKey(this, gameState.equippedOutfitColor, 32));
+    this.player.setTexture(playerTextureKey(this, gameState.equippedOutfitColor, 32, this.walkAnim.frame));
   }
 
   private onPausedChanged(paused: boolean) {
@@ -94,6 +95,7 @@ export default class GeneralStoreScene extends Phaser.Scene {
       return;
     }
     const moving = this.handleMovement();
+    this.walkAnim.update(this, this.player, moving, delta, playerTextureKey, gameState.equippedOutfitColor, 32);
     this.tickFootsteps(moving, delta);
     this.handleInteract();
     this.handleDoorTrigger();

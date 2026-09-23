@@ -3,7 +3,7 @@ import { gameState, bus } from '../game/state';
 import { spawnCustomer, checkoutQueue, clearCheckoutQueue } from '../game/Customer';
 import { COUNTER_POS, COUNTER_BEHIND_POS, SHOP_ENTRANCE_POS, SHOP_DOOR_TRIGGER, SHOP_SHELF_POSITIONS } from '../game/layout';
 import type { ShelfPosition } from '../game/layout';
-import { playerTextureKey, attachCircleBody } from '../game/pixelArt';
+import { playerTextureKey, attachCircleBody, WalkAnimator } from '../game/pixelArt';
 import { woodTextureKey } from '../game/sceneryArt';
 import { DECOR_ITEMS, type DecorDef } from '../game/decor';
 import { playFootstep } from '../game/audio';
@@ -31,6 +31,7 @@ export default class ShopScene extends Phaser.Scene {
   private nextSpawnAt = 3000;
   private decorVisuals = new Set<string>();
   private stepTimer = 0;
+  private walkAnim = new WalkAnimator();
 
   constructor() {
     super('Shop');
@@ -130,7 +131,7 @@ export default class ShopScene extends Phaser.Scene {
   }
 
   private onCosmeticsChanged() {
-    this.player.setTexture(playerTextureKey(this, gameState.equippedOutfitColor, 32));
+    this.player.setTexture(playerTextureKey(this, gameState.equippedOutfitColor, 32, this.walkAnim.frame));
     this.refreshDecor();
   }
 
@@ -234,6 +235,7 @@ export default class ShopScene extends Phaser.Scene {
   update(_time: number, delta: number) {
     if (!gameState.paused) {
       const moving = this.handleMovement();
+      this.walkAnim.update(this, this.player, moving, delta, playerTextureKey, gameState.equippedOutfitColor, 32);
       this.tickFootsteps(moving, delta);
       this.handleInteract();
       this.handleDoorTrigger();
