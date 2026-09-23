@@ -8,6 +8,7 @@ import { woodTextureKey } from '../game/sceneryArt';
 import { DECOR_ITEMS, type DecorDef } from '../game/decor';
 import { playFootstep } from '../game/audio';
 import { musicManager } from '../game/music';
+import { touchControls } from '../game/touchInput';
 
 const INTERACT_RANGE = 70;
 const STEP_INTERVAL_MS = 300;
@@ -40,6 +41,7 @@ export default class ShopScene extends Phaser.Scene {
 
   create() {
     musicManager.playScene('shop');
+    bus.emit('scene-changed', 'Shop');
     this.cameras.main.setBackgroundColor('#3e2723');
     this.shelfVisuals = [];
     this.customerSpawnTimer = 0;
@@ -253,10 +255,10 @@ export default class ShopScene extends Phaser.Scene {
     const body = this.player.body as Phaser.Physics.Arcade.Body;
     let vx = 0;
     let vy = 0;
-    if (this.cursors.left?.isDown || this.wasd.left.isDown) vx -= 1;
-    if (this.cursors.right?.isDown || this.wasd.right.isDown) vx += 1;
-    if (this.cursors.up?.isDown || this.wasd.up.isDown) vy -= 1;
-    if (this.cursors.down?.isDown || this.wasd.down.isDown) vy += 1;
+    if (this.cursors.left?.isDown || this.wasd.left.isDown || touchControls.left) vx -= 1;
+    if (this.cursors.right?.isDown || this.wasd.right.isDown || touchControls.right) vx += 1;
+    if (this.cursors.up?.isDown || this.wasd.up.isDown || touchControls.up) vy -= 1;
+    if (this.cursors.down?.isDown || this.wasd.down.isDown || touchControls.down) vy += 1;
     const vec = new Phaser.Math.Vector2(vx, vy);
     const moving = vec.length() > 0;
     if (moving) vec.normalize();
@@ -321,7 +323,7 @@ export default class ShopScene extends Phaser.Scene {
       this.promptText.setVisible(false);
     }
 
-    if (Phaser.Input.Keyboard.JustDown(this.interactKey)) {
+    if (Phaser.Input.Keyboard.JustDown(this.interactKey) || touchControls.consumeInteract()) {
       if (!target) {
         bus.emit('open-menu');
       } else if (target.type === 'counter') {

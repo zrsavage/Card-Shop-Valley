@@ -5,6 +5,7 @@ import { playerTextureKey, attachCircleBody, WalkAnimator } from '../game/pixelA
 import { woodTextureKey } from '../game/sceneryArt';
 import { playFootstep } from '../game/audio';
 import { musicManager } from '../game/music';
+import { touchControls } from '../game/touchInput';
 
 const INTERACT_RANGE = 70;
 const STEP_INTERVAL_MS = 300;
@@ -27,6 +28,7 @@ export default class DistributorScene extends Phaser.Scene {
 
   create() {
     musicManager.playScene('distributor');
+    bus.emit('scene-changed', 'Distributor');
     this.cameras.main.setBackgroundColor('#2e2a24');
     this.stepTimer = 0;
 
@@ -109,10 +111,10 @@ export default class DistributorScene extends Phaser.Scene {
     const body = this.player.body as Phaser.Physics.Arcade.Body;
     let vx = 0;
     let vy = 0;
-    if (this.cursors.left?.isDown || this.wasd.left.isDown) vx -= 1;
-    if (this.cursors.right?.isDown || this.wasd.right.isDown) vx += 1;
-    if (this.cursors.up?.isDown || this.wasd.up.isDown) vy -= 1;
-    if (this.cursors.down?.isDown || this.wasd.down.isDown) vy += 1;
+    if (this.cursors.left?.isDown || this.wasd.left.isDown || touchControls.left) vx -= 1;
+    if (this.cursors.right?.isDown || this.wasd.right.isDown || touchControls.right) vx += 1;
+    if (this.cursors.up?.isDown || this.wasd.up.isDown || touchControls.up) vy -= 1;
+    if (this.cursors.down?.isDown || this.wasd.down.isDown || touchControls.down) vy += 1;
     const vec = new Phaser.Math.Vector2(vx, vy);
     const moving = vec.length() > 0;
     if (moving) vec.normalize();
@@ -145,7 +147,7 @@ export default class DistributorScene extends Phaser.Scene {
     const near = d < INTERACT_RANGE;
     this.promptText.setText('Press E: Distributor').setPosition(DISTRIBUTOR_COUNTER_POS.x, DISTRIBUTOR_COUNTER_POS.y - 55).setVisible(near);
 
-    if (Phaser.Input.Keyboard.JustDown(this.interactKey)) {
+    if (Phaser.Input.Keyboard.JustDown(this.interactKey) || touchControls.consumeInteract()) {
       if (near) bus.emit('open-distributor');
       else bus.emit('open-menu');
     }

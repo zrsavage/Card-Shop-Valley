@@ -79,6 +79,91 @@ html, body {
   animation: statPop 0.45s ease;
 }
 
+/* On-screen touch controls — shown only for touch-primary devices (see
+   isTouchDevice() in touchInput.ts), hidden while any modal is open. */
+.touch-controls {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 4;
+}
+
+.touch-dpad {
+  position: absolute;
+  left: 18px;
+  bottom: 18px;
+  width: 150px;
+  height: 150px;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  grid-template-rows: repeat(3, 1fr);
+  gap: 6px;
+}
+
+.touch-dpad-up {
+  grid-column: 2;
+  grid-row: 1;
+}
+
+.touch-dpad-left {
+  grid-column: 1;
+  grid-row: 2;
+}
+
+.touch-dpad-right {
+  grid-column: 3;
+  grid-row: 2;
+}
+
+.touch-dpad-down {
+  grid-column: 2;
+  grid-row: 3;
+}
+
+.touch-actions {
+  position: absolute;
+  right: 18px;
+  bottom: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  align-items: center;
+}
+
+.touch-btn {
+  pointer-events: auto;
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(43, 29, 14, 0.55);
+  border: 2px solid #fff8ec;
+  border-radius: 14px;
+  color: #fff8ec;
+  font-size: 20px;
+}
+
+.touch-btn:active {
+  background: rgba(255, 183, 3, 0.8);
+}
+
+/* .touch-btn's own `display: flex` otherwise beats the browser's built-in
+   [hidden] { display: none } rule — both are author/UA-stylesheet rules of
+   equal specificity, and this one simply comes later in the cascade. */
+.touch-btn[hidden] {
+  display: none;
+}
+
+.touch-action-btn {
+  width: 58px;
+  height: 58px;
+  border-radius: 50%;
+  font-size: 22px;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .stat-pop {
     animation: none;

@@ -16,6 +16,7 @@ import { playerTextureKey, monsterTextureKey, attachCircleBody, WalkAnimator } f
 import { grassTextureKey, stoneGroundTextureKey } from '../game/sceneryArt';
 import { playHit, playPlayerHurt, playLegendary, playFootstep } from '../game/audio';
 import { musicManager } from '../game/music';
+import { touchControls } from '../game/touchInput';
 
 const STEP_INTERVAL_MS = 300;
 const ATTACK_COOLDOWN_MS = 400;
@@ -100,6 +101,7 @@ export default class WildsScene extends Phaser.Scene {
 
   create() {
     musicManager.playScene('wilds');
+    bus.emit('scene-changed', 'Wilds');
     this.zone = ZONE_DEFS.find((z) => z.id === gameState.currentZoneId) ?? ZONE_DEFS[0];
     this.cameras.main.setBackgroundColor(this.zone.cameraBg);
     this.enemies = [];
@@ -203,7 +205,7 @@ export default class WildsScene extends Phaser.Scene {
     this.tickRangedAttack(delta);
     this.updateProjectiles(delta);
     this.handleReturnTrigger();
-    if (Phaser.Input.Keyboard.JustDown(this.menuKey)) bus.emit('open-menu');
+    if (Phaser.Input.Keyboard.JustDown(this.menuKey) || touchControls.consumeInteract()) bus.emit('open-menu');
     this.updateEnemies(time, delta);
     this.tickSpawns(delta);
     this.tickRegen(time, delta);
@@ -227,10 +229,10 @@ export default class WildsScene extends Phaser.Scene {
     }
     let vx = 0;
     let vy = 0;
-    if (this.cursors.left?.isDown || this.wasd.left.isDown) vx -= 1;
-    if (this.cursors.right?.isDown || this.wasd.right.isDown) vx += 1;
-    if (this.cursors.up?.isDown || this.wasd.up.isDown) vy -= 1;
-    if (this.cursors.down?.isDown || this.wasd.down.isDown) vy += 1;
+    if (this.cursors.left?.isDown || this.wasd.left.isDown || touchControls.left) vx -= 1;
+    if (this.cursors.right?.isDown || this.wasd.right.isDown || touchControls.right) vx += 1;
+    if (this.cursors.up?.isDown || this.wasd.up.isDown || touchControls.up) vy -= 1;
+    if (this.cursors.down?.isDown || this.wasd.down.isDown || touchControls.down) vy += 1;
     const vec = new Phaser.Math.Vector2(vx, vy);
     const moving = vec.length() > 0;
     if (moving) {
@@ -266,7 +268,7 @@ export default class WildsScene extends Phaser.Scene {
   private handleAttack() {
     if (this.rangedWindupRemaining > 0) return;
     if (this.attackCooldownRemaining > 0) return;
-    if (!Phaser.Input.Keyboard.JustDown(this.attackKey)) return;
+    if (!Phaser.Input.Keyboard.JustDown(this.attackKey) && !touchControls.consumeAttack()) return;
     this.attackCooldownRemaining = ATTACK_COOLDOWN_MS * gameState.attackCooldownMultiplier;
 
     // A directional cone in the last-faced direction, not a full-circle AoE —
@@ -321,7 +323,7 @@ export default class WildsScene extends Phaser.Scene {
 
     if (!gameState.combatUpgrades.rangedWeaponUnlocked) return;
     if (this.rangedCooldownRemaining > 0) return;
-    if (!Phaser.Input.Keyboard.JustDown(this.rangedKey)) return;
+    if (!Phaser.Input.Keyboard.JustDown(this.rangedKey) && !touchControls.consumeRanged()) return;
 
     const windupMs = gameState.rangedWindupMs;
     this.rangedWindupRemaining = windupMs;

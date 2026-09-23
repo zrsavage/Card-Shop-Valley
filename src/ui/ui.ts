@@ -30,6 +30,7 @@ import { ACHIEVEMENTS, ACHIEVEMENT_CATEGORY_ORDER, checkAchievements, type Achie
 import { priceReactionFor } from '../game/pricing';
 import { playCardPop, playPackOpen, playLegendary, playChime, playCoin, playError } from '../game/audio';
 import { musicManager } from '../game/music';
+import { touchControls, isTouchDevice } from '../game/touchInput';
 import type { Card, ShopUpgrades, TownUpgrades, RecurringFees, CombatUpgrades, MovementUpgrades, Season, Rarity, BoardObjective, MerchantOffer } from '../game/types';
 import { RECURRING_FEE_DEFS } from '../game/fees';
 import { PRESTIGE_PERKS } from '../game/prestige';
@@ -2128,11 +2129,25 @@ export function initUI() {
     </div>
     <div id="auto-sale-toast" class="auto-sale-toast" hidden></div>
     <div id="achievement-toast" class="achievement-toast" hidden></div>
+    <div id="touch-controls" class="touch-controls" hidden>
+      <div class="touch-dpad">
+        <div class="touch-btn touch-dpad-up" data-dir="up">&#9650;</div>
+        <div class="touch-btn touch-dpad-left" data-dir="left">&#9664;</div>
+        <div class="touch-btn touch-dpad-right" data-dir="right">&#9654;</div>
+        <div class="touch-btn touch-dpad-down" data-dir="down">&#9660;</div>
+      </div>
+      <div class="touch-actions">
+        <div class="touch-btn touch-action-btn touch-ranged-btn" hidden title="Ranged (R)">&#127993;</div>
+        <div class="touch-btn touch-action-btn touch-attack-btn" hidden title="Attack (Space)">&#9876;</div>
+        <div class="touch-btn touch-action-btn touch-interact-btn" title="Interact (E)">E</div>
+      </div>
+    </div>
     <div id="modal-layer"></div>
   `;
   modalLayer = root.querySelector('#modal-layer') as HTMLDivElement;
 
   document.getElementById('menu-btn')!.addEventListener('click', () => openMenuModal());
+  setupTouchControls();
 
   // Escape always does the obvious thing: close whatever's open, or if
   // nothing is, open the Menu — a keyboard-only path to the same place the
@@ -2272,6 +2287,67 @@ export function initUI() {
   // Catches anything a loaded save already qualifies for the moment
   // achievements first ship, so existing progress gets credited right away.
   runAchievementCheck();
+}
+
+/** Wires the on-screen D-pad + action buttons to the shared touchControls
+ * state every scene's movement/action checks already read from — only
+ * shown for touch-primary devices (see isTouchDevice()), and hidden
+ * whenever a modal is open since the scenes themselves stop reading input
+ * then anyway. */
+function setupTouchControls() {
+  const container = document.getElementById('touch-controls');
+  if (!container || !isTouchDevice()) return;
+  container.hidden = gameState.paused;
+
+  const DIRECTIONS: { selector: string; dir: 'up' | 'down' | 'left' | 'right' }[] = [
+    { selector: '.touch-dpad-up', dir: 'up' },
+    { selector: '.touch-dpad-down', dir: 'down' },
+    { selector: '.touch-dpad-left', dir: 'left' },
+    { selector: '.touch-dpad-right', dir: 'right' },
+  ];
+  for (const { selector, dir } of DIRECTIONS) {
+    const el = container.querySelector<HTMLElement>(selector);
+    if (!el) continue;
+    el.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      touchControls[dir] = true;
+    });
+    const release = () => {
+      touchControls[dir] = false;
+    };
+    el.addEventListener('pointerup', release);
+    el.addEventListener('pointercancel', release);
+    el.addEventListener('pointerleave', release);
+  }
+
+  const bindTap = (selector: string, action: () => void) => {
+    container.querySelector<HTMLElement>(selector)?.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      action();
+    });
+  };
+  bindTap('.touch-interact-btn', () => touchControls.pressInteract());
+  bindTap('.touch-attack-btn', () => touchControls.pressAttack());
+  bindTap('.touch-ranged-btn', () => touchControls.pressRanged());
+
+  let currentScene = 'Shop';
+  const updateActionVisibility = () => {
+    const attackBtn = container.querySelector<HTMLElement>('.touch-attack-btn');
+    const rangedBtn = container.querySelector<HTMLElement>('.touch-ranged-btn');
+    const inWilds = currentScene === 'Wilds';
+    if (attackBtn) attackBtn.hidden = !inWilds;
+    if (rangedBtn) rangedBtn.hidden = !(inWilds && gameState.combatUpgrades.rangedWeaponUnlocked);
+  };
+  bus.on('scene-changed', (scene: string) => {
+    currentScene = scene;
+    updateActionVisibility();
+  });
+  bus.on('combat-upgrades-changed', updateActionVisibility);
+  bus.on('paused-changed', (paused: boolean) => {
+    container.hidden = paused;
+    if (paused) touchControls.releaseAll();
+  });
+  updateActionVisibility();
 }
 
 const achievementToastQueue: Achievement[] = [];
