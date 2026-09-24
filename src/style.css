@@ -90,10 +90,12 @@ html, body {
 
 .touch-dpad {
   position: absolute;
-  left: 18px;
-  bottom: 18px;
-  width: 150px;
-  height: 150px;
+  left: 6px;
+  bottom: 6px;
+  /* Bigger than the old visible version on purpose — with no button outline
+     to aim for, a generous blind-tap zone matters more than tight bounds. */
+  width: 220px;
+  height: 220px;
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   grid-template-rows: repeat(3, 1fr);
@@ -122,14 +124,18 @@ html, body {
 
 .touch-actions {
   position: absolute;
-  right: 18px;
-  bottom: 18px;
+  right: 6px;
+  bottom: 6px;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 14px;
   align-items: center;
 }
 
+/* Invisible at rest by design — a menu button is the only touch control
+   meant to be seen; movement/attack/interact are large blind-tap zones
+   instead. A brief, faint flash on touch (below) is the only feedback,
+   just enough to confirm a tap landed without cluttering the screen. */
 .touch-btn {
   pointer-events: auto;
   touch-action: none;
@@ -139,15 +145,18 @@ html, body {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(43, 29, 14, 0.55);
-  border: 2px solid #fff8ec;
+  background: transparent;
+  border: 2px solid transparent;
   border-radius: 14px;
-  color: #fff8ec;
+  color: transparent;
   font-size: 20px;
+  transition: background-color 0.1s ease, color 0.1s ease;
 }
 
 .touch-btn:active {
-  background: rgba(255, 183, 3, 0.8);
+  background: rgba(255, 248, 236, 0.16);
+  border-color: rgba(255, 248, 236, 0.35);
+  color: rgba(255, 248, 236, 0.75);
 }
 
 /* .touch-btn's own `display: flex` otherwise beats the browser's built-in
@@ -158,10 +167,10 @@ html, body {
 }
 
 .touch-action-btn {
-  width: 58px;
-  height: 58px;
+  width: 68px;
+  height: 68px;
   border-radius: 50%;
-  font-size: 22px;
+  font-size: 24px;
 }
 
 @media (prefers-reduced-motion: reduce) {
