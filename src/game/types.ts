@@ -15,6 +15,12 @@ export interface Card {
   stageCount: number;
   /** A rare alternate-look version of the same card, worth much more. */
   shiny: boolean;
+  /** Set once a card comes back from the Post Office's grading service —
+   * baseValue already has the grade's multiplier baked in by then, same as
+   * shiny's multiplier is baked in at generation time. */
+  graded?: boolean;
+  gradeNumber?: number;
+  gradeLabel?: string;
 }
 
 export interface ShelfSlot {
@@ -41,6 +47,14 @@ export interface ShopUpgrades {
 export interface TownUpgrades {
   fountainRepaired: boolean;
   festivalsUnlocked: boolean;
+}
+
+/** The Post Office: unlocks card grading at all, then two tiers of
+ * "priority shipping" that cut the turnaround time on a submitted card. */
+export interface PostOfficeUpgrades {
+  unlocked: boolean;
+  speedTier1: boolean;
+  speedTier2: boolean;
 }
 
 /** Weekly bills — a real cost of living on top of running the shop. Each

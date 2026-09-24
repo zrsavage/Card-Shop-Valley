@@ -37,9 +37,10 @@ export const SEASON_PRICE_MULTIPLIER: Record<Season, number> = {
 };
 
 // A rare alternate-look version of any card, independent of rarity — a
-// shiny common is still a shiny. Worth a lot more, purely a lucky bonus.
-export const SHINY_CHANCE = 0.05;
-export const SHINY_VALUE_MULTIPLIER = 4;
+// shiny common is still a shiny. Genuinely rare (~1 in 67) and worth a lot
+// more when it happens, purely a lucky bonus.
+export const SHINY_CHANCE = 0.015;
+export const SHINY_VALUE_MULTIPLIER = 10;
 
 let cardCounter = 0;
 

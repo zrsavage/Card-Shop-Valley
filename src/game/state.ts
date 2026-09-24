@@ -13,6 +13,7 @@ import type {
   Rarity,
   BoardObjective,
   MerchantVisit,
+  PostOfficeUpgrades,
 } from './types';
 import { SHOP_SHELF_POSITIONS } from './layout';
 import { NPCS } from './npcs';
@@ -27,6 +28,7 @@ import { DECOR_ITEMS } from './decor';
 import { PERKS } from './perks';
 import { DAILY_BOSS_KILL_CAP } from './combat';
 import { RECURRING_FEE_DEFS, weeklyFeeMultiplier } from './fees';
+import { rollGrade, gradingCost, GRADING_TURNAROUND_DAYS } from './grading';
 
 export const bus = new Phaser.Events.EventEmitter();
 
@@ -139,6 +141,8 @@ export interface DaySummary {
   feesCharged: number;
   /** Names of the specific fees that were charged, for the summary line. */
   feeNames: string[];
+  /** Cards that finished grading overnight and landed back in the bag. */
+  gradingArrivals: { cardName: string; gradeNumber: number; gradeLabel: string; newValue: number }[];
 }
 
 /** Emitted by endDay() instead of a DaySummary when the weekly bill comes
@@ -166,6 +170,14 @@ function defaultTownUpgrades(): TownUpgrades {
   return {
     fountainRepaired: false,
     festivalsUnlocked: false,
+  };
+}
+
+function defaultPostOfficeUpgrades(): PostOfficeUpgrades {
+  return {
+    unlocked: false,
+    speedTier1: false,
+    speedTier2: false,
   };
 }
 
@@ -244,6 +256,9 @@ class GameState {
 
   shopUpgrades: ShopUpgrades = defaultShopUpgrades();
   townUpgrades: TownUpgrades = defaultTownUpgrades();
+  postOffice: PostOfficeUpgrades = defaultPostOfficeUpgrades();
+  /** Cards currently away being graded — see submitCardForGrading(). */
+  pendingGrading: { id: string; card: Card; readyDay: number }[] = [];
   recurringFees: RecurringFees = defaultRecurringFees();
   combatUpgrades: CombatUpgrades = defaultCombatUpgrades();
   movementUpgrades: MovementUpgrades = defaultMovementUpgrades();
@@ -682,6 +697,41 @@ class GameState {
     return true;
   }
 
+  purchasePostOfficeUpgrade(key: keyof PostOfficeUpgrades, cost: number): boolean {
+    if (this.postOffice[key]) return false;
+    if (!this.spendGold(cost)) return false;
+    this.postOffice[key] = true;
+    bus.emit('post-office-changed', this.postOffice);
+    return true;
+  }
+
+  /** 0 = base Post Office only, 1 = speedTier1, 2 = speedTier2 — indexes
+   * GRADING_TURNAROUND_DAYS. */
+  get gradingSpeedTierIndex(): number {
+    if (this.postOffice.speedTier2) return 2;
+    if (this.postOffice.speedTier1) return 1;
+    return 0;
+  }
+
+  get gradingTurnaroundDays(): number {
+    return GRADING_TURNAROUND_DAYS[this.gradingSpeedTierIndex];
+  }
+
+  /** Ships a card off to be graded — costs a cut of its current value up
+   * front, and it's gone from the bag until it comes back (better or
+   * worse) in gradingTurnaroundDays. Requires the Post Office unlocked. */
+  submitCardForGrading(cardId: string): boolean {
+    if (!this.postOffice.unlocked) return false;
+    const card = this.inventory.find((c) => c.id === cardId);
+    if (!card || card.graded) return false;
+    const cost = gradingCost(card);
+    if (!this.spendGold(cost)) return false;
+    this.removeFromInventory(cardId);
+    this.pendingGrading.push({ id: card.id, card, readyDay: this.day + this.gradingTurnaroundDays });
+    bus.emit('grading-changed', this.pendingGrading);
+    return true;
+  }
+
   /** Total still due on the next weekly bill — every fee not yet paid off,
    * scaled up by how many weeks have gone by. Escalation is the cost of
    * leaving a fee unpaid; the one-time payoff cost never moves. */
@@ -726,6 +776,8 @@ class GameState {
     this.shelves = SHOP_SHELF_POSITIONS.map((_, i) => ({ id: `shelf-${i}`, card: null, price: 0 }));
     this.shopUpgrades = defaultShopUpgrades();
     this.townUpgrades = defaultTownUpgrades();
+    this.postOffice = defaultPostOfficeUpgrades();
+    this.pendingGrading = [];
     // recurringFees intentionally left untouched — already fully paid off.
     this.combatUpgrades = defaultCombatUpgrades();
     this.movementUpgrades = defaultMovementUpgrades();
@@ -754,6 +806,8 @@ class GameState {
     bus.emit('shelves-changed', this.shelves);
     bus.emit('shop-upgrades-changed', this.shopUpgrades);
     bus.emit('town-upgrades-changed', this.townUpgrades);
+    bus.emit('post-office-changed', this.postOffice);
+    bus.emit('grading-changed', this.pendingGrading);
     bus.emit('recurring-fees-changed', this.recurringFees);
     bus.emit('combat-upgrades-changed', this.combatUpgrades);
     bus.emit('movement-upgrades-changed', this.movementUpgrades);
@@ -982,6 +1036,8 @@ class GameState {
     this.shelves = SHOP_SHELF_POSITIONS.map((_, i) => ({ id: `shelf-${i}`, card: null, price: 0 }));
     this.shopUpgrades = defaultShopUpgrades();
     this.townUpgrades = defaultTownUpgrades();
+    this.postOffice = defaultPostOfficeUpgrades();
+    this.pendingGrading = [];
     this.recurringFees = defaultRecurringFees();
     this.combatUpgrades = defaultCombatUpgrades();
     this.movementUpgrades = defaultMovementUpgrades();
@@ -1011,6 +1067,8 @@ class GameState {
     bus.emit('shelves-changed', this.shelves);
     bus.emit('shop-upgrades-changed', this.shopUpgrades);
     bus.emit('town-upgrades-changed', this.townUpgrades);
+    bus.emit('post-office-changed', this.postOffice);
+    bus.emit('grading-changed', this.pendingGrading);
     bus.emit('recurring-fees-changed', this.recurringFees);
     bus.emit('combat-upgrades-changed', this.combatUpgrades);
     bus.emit('movement-upgrades-changed', this.movementUpgrades);
@@ -1163,6 +1221,32 @@ class GameState {
       bus.emit('gold-changed', this.gold);
     }
 
+    // Resolve any grading submissions maturing as of tomorrow — rolled and
+    // added to the bag before the summary is built, so it can report them.
+    const newDay = this.day + 1;
+    const gradingArrivals: DaySummary['gradingArrivals'] = [];
+    const stillPendingGrading: typeof this.pendingGrading = [];
+    for (const submission of this.pendingGrading) {
+      if (submission.readyDay > newDay) {
+        stillPendingGrading.push(submission);
+        continue;
+      }
+      const tier = rollGrade();
+      const gradedCard: Card = {
+        ...submission.card,
+        graded: true,
+        gradeNumber: tier.grade,
+        gradeLabel: tier.label,
+        baseValue: Math.max(1, Math.round(submission.card.baseValue * tier.valueMultiplier)),
+      };
+      this.addCardsToInventory([gradedCard]);
+      gradingArrivals.push({ cardName: gradedCard.name, gradeNumber: tier.grade, gradeLabel: tier.label, newValue: gradedCard.baseValue });
+    }
+    if (gradingArrivals.length > 0) {
+      this.pendingGrading = stillPendingGrading;
+      bus.emit('grading-changed', this.pendingGrading);
+    }
+
     const summary: DaySummary = {
       day: this.day,
       season: this.season,
@@ -1172,6 +1256,7 @@ class GameState {
       upgradesArrived: this.pendingShopUpgrades.length,
       feesCharged,
       feeNames: dueFees.map((def) => def.name),
+      gradingArrivals,
     };
     this.day += 1;
     this.lifetimeDaysPlayed += 1;

@@ -1085,6 +1085,24 @@ html, body {
   color: #d9a92e;
 }
 
+.grade-badge {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  background: linear-gradient(90deg, #8ecae6, #caf0f8);
+  color: #2b1d0e;
+  font-size: 8px;
+  font-weight: 700;
+  padding: 1px 5px;
+  border-radius: 6px;
+  white-space: nowrap;
+  z-index: 1;
+}
+
+.grade-tag {
+  color: #4a90c2;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .card-chip-shiny::after {
     animation: none;

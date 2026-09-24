@@ -4,6 +4,7 @@ import type {
   ShelfSlot,
   ShopUpgrades,
   TownUpgrades,
+  PostOfficeUpgrades,
   RecurringFees,
   CombatUpgrades,
   MovementUpgrades,
@@ -56,6 +57,8 @@ interface SaveData {
   unlockedAchievementIds: string[];
   musicMuted: boolean;
   musicVolume: number;
+  postOffice: PostOfficeUpgrades;
+  pendingGrading: { id: string; card: Card; readyDay: number }[];
 }
 
 export function saveGame() {
@@ -102,6 +105,8 @@ export function saveGame() {
       unlockedAchievementIds: [...gameState.unlockedAchievementIds],
       musicMuted: gameState.musicMuted,
       musicVolume: gameState.musicVolume,
+      postOffice: gameState.postOffice,
+      pendingGrading: gameState.pendingGrading,
     };
     localStorage.setItem(SAVE_KEY, JSON.stringify(data));
   } catch {
@@ -172,6 +177,8 @@ export function loadGame(): boolean {
     if (Array.isArray(data.unlockedAchievementIds)) gameState.unlockedAchievementIds = new Set(data.unlockedAchievementIds);
     if (typeof data.musicMuted === 'boolean') gameState.musicMuted = data.musicMuted;
     if (typeof data.musicVolume === 'number') gameState.musicVolume = data.musicVolume;
+    if (data.postOffice) Object.assign(gameState.postOffice, data.postOffice);
+    if (Array.isArray(data.pendingGrading)) gameState.pendingGrading = data.pendingGrading;
     return true;
   } catch {
     return false;
@@ -231,4 +238,6 @@ export function initAutosave() {
   bus.on('perks-changed', queueSave);
   bus.on('achievement-unlocked', queueSave);
   bus.on('audio-settings-changed', queueSave);
+  bus.on('post-office-changed', queueSave);
+  bus.on('grading-changed', queueSave);
 }

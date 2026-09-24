@@ -31,7 +31,8 @@ import { priceReactionFor } from '../game/pricing';
 import { playCardPop, playPackOpen, playLegendary, playChime, playCoin, playError } from '../game/audio';
 import { musicManager } from '../game/music';
 import { touchControls, isTouchDevice } from '../game/touchInput';
-import type { Card, ShopUpgrades, TownUpgrades, RecurringFees, CombatUpgrades, MovementUpgrades, Season, Rarity, BoardObjective, MerchantOffer } from '../game/types';
+import { gradingCost, GRADING_TURNAROUND_DAYS } from '../game/grading';
+import type { Card, ShopUpgrades, TownUpgrades, PostOfficeUpgrades, RecurringFees, CombatUpgrades, MovementUpgrades, Season, Rarity, BoardObjective, MerchantOffer } from '../game/types';
 import { RECURRING_FEE_DEFS } from '../game/fees';
 import { PRESTIGE_PERKS } from '../game/prestige';
 import { OUTFITS, type OutfitDef } from '../game/outfits';
@@ -63,11 +64,12 @@ function cardChipHtml(card: Card, small = false): string {
   const stageBadge = card.stageCount > 1 ? `<div class="stage-badge">${card.stage}/${card.stageCount}</div>` : '';
   const setLine = small ? '' : `<div class="card-set-name">${SEASON_SET_NAME[card.season]}</div>`;
   const shinyBadge = card.shiny ? `<div class="shiny-badge">&#10022; Shiny</div>` : '';
+  const gradeBadge = card.graded ? `<div class="grade-badge">Graded ${card.gradeNumber}</div>` : '';
   return `
     <div class="card-chip rarity-${card.rarity}${small ? ' card-chip-small' : ''}${card.shiny ? ' card-chip-shiny' : ''}">
       <div class="card-inner">
         <div class="card-name">${card.name}</div>
-        <div class="card-art-window">${art}${stageBadge}${shinyBadge}</div>
+        <div class="card-art-window">${art}${stageBadge}${shinyBadge}${gradeBadge}</div>
         <div class="card-footer">
           <span class="card-rarity-pill rarity-pill-${card.rarity}">${RARITY_LABELS[card.rarity]}</span>
         </div>
@@ -97,7 +99,7 @@ function compactCardRowHtml(card: Card, idx: number, trailingHtml: string, highl
     <div class="codex-row${highlight ? ' codex-row-requested' : ''}" data-idx="${idx}">
       <div class="codex-thumb-wrap">${cardArtHtml(card.speciesId, card.stage, card.season, card.rarity, 'codex-thumb', 'codex-thumb-fallback')}</div>
       <div class="codex-info">
-        <div class="codex-name">${card.name}${card.shiny ? ' <span class="shiny-tag">&#10022;</span>' : ''}</div>
+        <div class="codex-name">${card.name}${card.shiny ? ' <span class="shiny-tag">&#10022;</span>' : ''}${card.graded ? ` <span class="grade-tag">Graded ${card.gradeNumber}</span>` : ''}</div>
         <div class="codex-meta">${RARITY_LABELS[card.rarity]} &middot; base ${card.baseValue}g</div>
         ${requestTag}
       </div>
@@ -178,6 +180,37 @@ interface TownUpgradeDef {
 const TOWN_UPGRADE_DEFS: TownUpgradeDef[] = [
   { key: 'fountainRepaired', name: 'Repair the Fountain', cost: 250, description: 'Talking to townsfolk earns a bit more friendship, and unlocks fishing at the fountain.' },
   { key: 'festivalsUnlocked', name: 'Sponsor the Festival', cost: 600, description: 'Every 7th day becomes a Festival with a rush of customers.' },
+];
+
+interface PostOfficeUpgradeDef {
+  key: keyof PostOfficeUpgrades;
+  name: string;
+  cost: number;
+  description: string;
+  requiresKey?: keyof PostOfficeUpgrades;
+}
+
+const POST_OFFICE_UPGRADE_DEFS: PostOfficeUpgradeDef[] = [
+  {
+    key: 'unlocked',
+    name: 'Open a Post Office',
+    cost: 500,
+    description: 'Ship cards out to be professionally graded — a high grade can multiply a card\'s value many times over.',
+  },
+  {
+    key: 'speedTier1',
+    name: 'Priority Shipping I',
+    cost: 800,
+    description: `Cuts grading turnaround from ${GRADING_TURNAROUND_DAYS[0]} days to ${GRADING_TURNAROUND_DAYS[1]}.`,
+    requiresKey: 'unlocked',
+  },
+  {
+    key: 'speedTier2',
+    name: 'Priority Shipping II',
+    cost: 2000,
+    description: `Cuts grading turnaround to just ${GRADING_TURNAROUND_DAYS[2]} day.`,
+    requiresKey: 'speedTier1',
+  },
 ];
 
 interface CombatUpgradeDef {
@@ -475,6 +508,84 @@ function openCounterModal() {
   modalLayer.querySelector('.close-btn')!.addEventListener('click', closeModal);
 }
 
+// --- Post Office (grading) — lives inside the Distributor modal rather
+// than its own building, alongside the other things you order/upgrade there ---
+
+function postOfficeUpgradesHtml(): string {
+  return POST_OFFICE_UPGRADE_DEFS.map((def) => {
+    const owned = gameState.postOffice[def.key];
+    const requirementMet = !def.requiresKey || gameState.postOffice[def.requiresKey];
+    const locked = !requirementMet;
+    return upgradeRowHtml(def.key, def.name, def.cost, def.description, owned, locked);
+  }).join('');
+}
+
+function pendingGradingHtml(): string {
+  if (gameState.pendingGrading.length === 0) return '';
+  const rows = gameState.pendingGrading
+    .map((sub) => {
+      const daysLeft = Math.max(1, sub.readyDay - gameState.day);
+      return `
+        <div class="pack-row pack-row-pending">
+          <div class="pack-info">
+            <div class="pack-name">${sub.card.name}</div>
+            <div class="pack-meta">Sent for grading &middot; base ${sub.card.baseValue}g</div>
+          </div>
+          <span class="pack-pending-tag">Back in ${daysLeft} day${daysLeft === 1 ? '' : 's'}</span>
+        </div>
+      `;
+    })
+    .join('');
+  return `<h2 class="modal-section-title">Away for Grading</h2><div class="pack-list">${rows}</div>`;
+}
+
+// A dedicated picker rather than inline in the Distributor modal — the
+// Distributor is already long, and picking a card out of a big bag deserves
+// the same full-list treatment shelving/gifting get.
+function openGradingPickerModal() {
+  const ungraded = gameState.inventory.filter((c) => !c.graded);
+  const body =
+    ungraded.length === 0
+      ? `<p class="modal-sub">Nothing in your bag is eligible — every card on hand is already graded, or your bag is empty.</p>`
+      : `<div class="codex-list">${ungraded
+          .map((c) => {
+            const idx = gameState.inventory.indexOf(c);
+            const cost = gradingCost(c);
+            return compactCardRowHtml(
+              c,
+              idx,
+              `<button class="btn btn-small send-grading-btn" data-idx="${idx}" ${gameState.gold < cost ? 'disabled' : ''}>Send (${cost}g)</button>`,
+            );
+          })
+          .join('')}</div>`;
+
+  renderModal(
+    `
+    <h2>Send a Card for Grading</h2>
+    <p class="modal-sub">
+      Costs a cut of the card's current value up front. Back in ${gameState.gradingTurnaroundDays} day${gameState.gradingTurnaroundDays === 1 ? '' : 's'} —
+      most grades land somewhere in the middle, but a rare top grade multiplies its value many times over. A bad grade can also come back worth less.
+    </p>
+    ${body}
+    <button class="btn btn-secondary close-btn">Back to Distributor</button>
+  `,
+    openDistributorModal,
+  );
+
+  modalLayer.querySelectorAll<HTMLButtonElement>('.send-grading-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const card = gameState.inventory[Number(btn.dataset.idx)];
+      if (!gameState.submitCardForGrading(card.id)) {
+        playError();
+        return;
+      }
+      playChime();
+      openGradingPickerModal();
+    });
+  });
+  modalLayer.querySelector('.close-btn')!.addEventListener('click', openDistributorModal);
+}
+
 // Everything you'd buy for the shop — packs, provisions, upgrades — now
 // lives here instead, and nothing ordered shows up before tomorrow.
 function openDistributorModal() {
@@ -519,6 +630,15 @@ function openDistributorModal() {
     ${pendingArrivalsHtml()}
     <h2 class="modal-section-title">Shop Upgrades</h2>
     <div class="pack-list">${shopUpgradesHtml()}</div>
+    <h2 class="modal-section-title">Post Office</h2>
+    <p class="modal-sub">Ship cards out for professional grading — a rare top grade multiplies a card's value many times over.</p>
+    <div class="pack-list">${postOfficeUpgradesHtml()}</div>
+    ${
+      gameState.postOffice.unlocked
+        ? `<button class="btn btn-small open-grading-picker-btn">Send a Card for Grading</button>`
+        : ''
+    }
+    ${pendingGradingHtml()}
     <h2 class="modal-section-title">Shop Reputation</h2>
     <p class="modal-sub reputation-line">${repLine}</p>
     <button class="btn btn-secondary close-btn">Close</button>
@@ -540,6 +660,16 @@ function openDistributorModal() {
       openDistributorModal();
     });
   });
+  modalLayer.querySelectorAll<HTMLButtonElement>('.buy-upgrade-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const def = POST_OFFICE_UPGRADE_DEFS.find((d) => d.key === btn.dataset.key);
+      if (!def) return;
+      if (!gameState.purchasePostOfficeUpgrade(def.key, def.cost)) return;
+      playChime();
+      openDistributorModal();
+    });
+  });
+  modalLayer.querySelector('.open-grading-picker-btn')?.addEventListener('click', openGradingPickerModal);
   modalLayer.querySelector('.close-btn')!.addEventListener('click', closeModal);
 }
 
@@ -1090,9 +1220,12 @@ function openDaySummaryModal(summary: DaySummary) {
     summary.feesCharged > 0
       ? `<br>&#128179; This week's bill: <strong>${summary.feesCharged}g</strong> (${summary.feeNames.join(', ')}). Pay fees off for good at Town Hall.`
       : '';
+  const gradingLines = summary.gradingArrivals
+    .map((a) => `<br>&#128231; <strong>${a.cardName}</strong> came back from grading: <strong>${a.gradeLabel} (${a.gradeNumber})</strong> — now worth ${a.newValue}g.`)
+    .join('');
   renderModal(`
     <h2>Day ${summary.day} Complete!</h2>
-    <p class="modal-sub">${SEASON_SET_NAME[summary.season]} &middot; Earned <strong>${summary.goldEarned}g</strong> from ${summary.cardsSold} sale${summary.cardsSold === 1 ? '' : 's'}.${packsLine}${upgradesLine}${feesLine}</p>
+    <p class="modal-sub">${SEASON_SET_NAME[summary.season]} &middot; Earned <strong>${summary.goldEarned}g</strong> from ${summary.cardsSold} sale${summary.cardsSold === 1 ? '' : 's'}.${packsLine}${upgradesLine}${feesLine}${gradingLines}</p>
     <button class="btn start-day-btn">Start Day ${summary.day + 1}</button>
   `);
   modalLayer.querySelector('.start-day-btn')!.addEventListener('click', closeModal);
